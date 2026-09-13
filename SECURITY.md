@@ -18,18 +18,14 @@ git pull && docker compose pull && docker compose up -d
 
 ## Reporting a vulnerability
 
-The project lives on GitLab. It has no security-advisory workflow on the free tier, but it does
-have **confidential issues**, and that is the private channel: open an issue at
-<https://gitlab.com/DuarteSantos8/opengym/-/issues/new> and tick **"This issue is confidential"**
-*before* you submit. A confidential issue is readable only by project members — you'll see it,
-I'll see it, nobody else will, and it stays that way if it is later closed.
+The canonical project is [Derrick's GitHub repository](https://github.com/derrick-ships/openGym).
+If GitHub offers the form for your account, submit a private draft advisory at
+<https://github.com/derrick-ships/openGym/security/advisories/new>. Do not put working exploit
+details in a public issue.
 
-If you'd rather not put the details in GitLab at all, open a confidential issue saying only
-*"I need an address for a security report"* — no details, no repro, no version — and you'll get
-one back within a couple of days.
-
-> The GitHub repo and its private vulnerability reporting are gone with the suspended account;
-> `github.com/DuarteSantos8/openGym/security/advisories/new` no longer resolves.
+If that private-advisory form is unavailable, use the existing upstream GitLab fallback: open an
+issue at <https://gitlab.com/DuarteSantos8/opengym/-/issues/new> and tick **"This issue is
+confidential"** *before* you submit. A confidential issue is readable only by project members.
 
 Please don't put a working exploit in a *non-confidential* issue if it can be used against other
 people's instances — and not in the Discord either, which is a public room. Everything else (a crash you can only trigger on your own box, a scanner warning)

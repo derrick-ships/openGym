@@ -47,10 +47,10 @@ cd frontend && npm test
 
 A pull request runs the three test suites (frontend, MCP, api) through GitHub Actions and
 builds and boots both api image targets. The APK and the published images come from the CI
-on the GitLab mirror, which builds them from `main` after the merge; if your change needs an
+on the upstream GitLab project, which builds them from `main` after the merge; if your change needs an
 APK to be judged, say so in the PR and a maintainer runs that build.
 
-Merge requests that are still open on the GitLab mirror keep working as before. Every MR runs the three test suites (frontend, MCP, api), with the results and the coverage
+Merge requests that are still open on the upstream GitLab project keep working as before. Every MR runs the three test suites (frontend, MCP, api), with the results and the coverage
 of your diff shown in the MR itself, plus a build of the web image and the api image when you
 touched their inputs. The frontend job also prints how much your change adds to the gzipped
 bundle compared with main. The APK and the published images are manual jobs there (on
@@ -76,10 +76,10 @@ here before, otherwise a maintainer presses "Run pipeline" after a first look at
 | You have | Goes to |
 | --- | --- |
 | A quick question, or you'd rather just chat | [The Discord](https://discord.gg/e62jY6fwVb) |
-| A question, or self-hosting that won't behave | [An issue labelled `question`](https://github.com/DuarteSantos8/openGym/issues) |
-| An idea you're not sure about yet | [An issue labelled `idea`](https://github.com/DuarteSantos8/openGym/issues) |
-| A reproducible bug | [Issues](https://github.com/DuarteSantos8/openGym/issues) |
-| A change you've already built | [A pull request](https://github.com/DuarteSantos8/openGym/pulls) |
+| A question, or self-hosting that won't behave | [An issue labelled `question`](https://github.com/derrick-ships/openGym/issues) |
+| An idea you're not sure about yet | [An issue labelled `idea`](https://github.com/derrick-ships/openGym/issues) |
+| A reproducible bug | [Issues](https://github.com/derrick-ships/openGym/issues) |
+| A change you've already built | [A pull request](https://github.com/derrick-ships/openGym/pulls) |
 
 Questions and ideas are issues too (one tracker is enough) — just labelled, so nobody
 mistakes a question for agreed-on work. An answered question is worth more than the same answer

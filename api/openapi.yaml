@@ -59,7 +59,7 @@ info:
     identifier: AGPL-3.0-or-later
   contact:
     name: openGym
-    url: https://gitlab.com/DuarteSantos8/opengym
+    url: https://github.com/derrick-ships/openGym
 
 servers:
   - url: /

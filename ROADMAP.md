@@ -10,7 +10,7 @@ block, the date does not move. Version numbers follow the release rule, not the 
 the next release is the last published one plus one patch (1.3.7 → 1.3.8), and a minor bump is
 reserved for something that breaks compatibility — that is v1.4.0, the database.
 
-- Milestones: https://github.com/DuarteSantos8/openGym/milestones — every open issue sits in exactly one
+- Milestones: https://github.com/derrick-ships/openGym/milestones — every open issue sits in exactly one
 - Tracks, in order: promised items → history editing → queue and programmes → the progression
   engine → cardio → **the foundation (database, then search)** → accounts → the iOS app → Android
   and health → exercises → looks and social

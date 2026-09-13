@@ -15,6 +15,6 @@
 - [About](https://opengym.duarte-santos.ch/about.html): the story and every release
 
 ## Source & community
-- [GitHub repository](https://github.com/DuarteSantos8/openGym): code, issues, pull requests, releases
-- [GitLab mirror](https://gitlab.com/DuarteSantos8/opengym): CI, APK and image builds
+- [GitHub repository](https://github.com/derrick-ships/openGym): code, issues, pull requests, releases
+- [Upstream GitLab artifacts](https://gitlab.com/DuarteSantos8/opengym): existing APK and image builds
 - [Discord](https://discord.gg/e62jY6fwVb): release announcements and self-hosting help

@@ -3,7 +3,7 @@
 // that come from the GitHub API (repo counts, release timeline).
 // Every one of them fails soft — the page is complete without any of this running.
 
-const GH_REPO = 'https://api.github.com/repos/DuarteSantos8/openGym'
+const GH_REPO = 'https://api.github.com/repos/derrick-ships/openGym'
 
 // Discord publishes an invite's guild counts to anyone who asks for the invite with
 // ?with_counts=1 — no bot token, no widget to enable, and the API reflects the caller's

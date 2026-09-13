@@ -91,7 +91,7 @@ The official signed APK is in four places, all the same file:
 - **[GitLab's package registry](https://gitlab.com/DuarteSantos8/opengym/-/packages)** — every
   build under `opengym-android/<version>/`, with a `.sha256` beside it. Direct link, no login:
   `https://gitlab.com/api/v4/projects/85678327/packages/generic/opengym-android/<version>/openGym-<version>.apk`
-- **[The GitHub release](https://github.com/DuarteSantos8/openGym/releases)** for that version,
+- **[The GitHub release](https://github.com/derrick-ships/openGym/releases)** for that version,
   with the APK and its `.sha256` attached as release assets.
 - **[The GitLab release](https://gitlab.com/DuarteSantos8/opengym/-/releases)** on the mirror,
   where the file is built; it links to the package registry above.

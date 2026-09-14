@@ -4,6 +4,12 @@ import { assetObjectUrl } from '../lib/api.js'
 import { useStore } from '../store/useStore.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
+import { glyphOf, GLYPHS } from '../lib/glyphs.js'
+
+function exerciseThumbGlyph(value) {
+  const glyph = value && glyphOf(value)
+  return glyph && GLYPHS.includes(glyph) ? glyph : 'dumbbell'
+}
 
 function usePrivateAsset(ex) {
   const id = ex?.media?.id || null
@@ -70,7 +76,7 @@ export default function Media({ ex, id, compact, minimizable }) {
 
 export function Thumb({ ex }) {
   const privateSrc = usePrivateAsset(ex)
-  if (!ex.img && !ex.media?.id) return <div className="thumb thumb-x"><Icon name="dumbbell" /></div>
+  if (!ex.img && !ex.media?.id) return <div className="thumb thumb-x"><Icon name={exerciseThumbGlyph(ex.icon)} /></div>
   if (ex.media?.id && !privateSrc) return <div className="thumb thumb-x" aria-busy="true"><Icon name="dumbbell" /></div>
   return <img className="thumb" loading="lazy" decoding="async" draggable={false} src={ex.media?.id ? privateSrc : imgSrc(ex)} alt="" />
 }

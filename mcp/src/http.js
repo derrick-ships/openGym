@@ -26,6 +26,10 @@ const oauthCodes = new Map()
 const oauthReplay = new Map()
 const OAUTH_TTL_MS = 5 * 60 * 1000
 const OAUTH_MAX_ENTRIES = 1000
+// Keep the gateway envelope large enough for the API's 10 MiB decoded image ceiling plus its
+// base64/JSON overhead. The per-tool schema and API still enforce the 14 MiB encoded/10 MiB raw
+// image bounds; this is only the transport ceiling and remains finite.
+const MAX_JSON_BODY = 16 * 1024 * 1024
 function pruneSessions() {
   const cutoff = Date.now() - SESSION_TTL_MS
   for (const [id, session] of sessions) if (session.lastSeen < cutoff) sessions.delete(id)
@@ -34,10 +38,14 @@ setInterval(pruneSessions, 5 * 60 * 1000).unref()
 const scopes = {
   list_exercises: 'exercise:read', search_exercises: 'exercise:read', get_exercise: 'exercise:read',
   list_routines: 'routine:read', get_routine: 'routine:read', preview_session: 'routine:read', get_week_plan: 'routine:read',
+  list_equipment_profiles: 'equipment:read',
   list_workouts: 'workout:read', get_workout: 'workout:read', get_bodyweight: 'bodyweight:read',
   estimate_1rm: 'progress:read', muscle_balance: 'progress:read', create_workout: 'workout:write'
 }
-const OAUTH_SCOPES = [...new Set([...Object.values(scopes), 'routine:propose'])]
+const OAUTH_SCOPES = [...new Set([
+  ...Object.values(scopes), 'routine:propose', 'exercise:write', 'routine:write', 'image:write',
+  'equipment:write', 'plan:write'
+])]
 
 function jsonResponse(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers })
@@ -241,6 +249,13 @@ function makeServer(token, grantedScopes = []) {
   const server = new McpServer({ name: 'opengym-remote', version: '1.0.0' })
   for (const tool of TOOLS) {
     const scope = scopes[tool.name]
+    const required = tool.name === 'preview_session'
+      ? ['routine:read', 'progress:read', 'bodyweight:read']
+      : [scope]
+    // A tool absent from tools/list is materially safer than a menu full of tools that all fail
+    // at invocation time. In particular, preview requires three independent read grants; an
+    // incomplete Promise.all must not make one client's partial permissions look like a bug.
+    if (!scope || required.some(requiredScope => !grantedScopes.includes(requiredScope))) continue
     server.tool(tool.name, tool.description, tool.schema, async params => {
       try {
         let snapshot
@@ -263,12 +278,141 @@ function makeServer(token, grantedScopes = []) {
           remoteState = snapshot.state
         }
         const result = tool.handler(params || {}, { state: remoteState, user: snapshot.user })
-        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+        const withRevision = result && typeof result === 'object' && snapshot?.revision
+          ? { ...result, revision: snapshot.revision }
+          : result
+        return { content: [{ type: 'text', text: JSON.stringify(withRevision, null, 2) }] }
       } catch (error) {
         return { isError: true, content: [{ type: 'text', text: `${error.code || 'ERROR'}: ${error.message}` }] }
       }
     })
   }
+  const mutationResult = (result, error) => error
+    ? { isError: true, content: [{ type: 'text', text: `${error.code || 'ERROR'}${error.status ? ` HTTP ${error.status}` : ''}: ${error.message}` }] }
+    : { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+  const registerWriter = ({ name, description, scope, schema, method = 'POST', pathFor, bodyFor, revisionRequired = false }) => {
+    if (!grantedScopes.includes(scope)) return
+    server.tool(name, description, schema, async params => {
+      try {
+        // Creates are append-only and may obtain the current validator here. Edits and image
+        // replacements must carry the revision the caller read; fetching a newer one here would
+        // turn a phone edit that happened after that read into a silent overwrite.
+        const revision = revisionRequired
+          ? params.revision
+          : (await apiJson(`/api/mcp/revision?scope=${encodeURIComponent(scope)}`, token)).revision
+        const requestId = params.request_id
+        const result = await apiJson(pathFor(params), token, {
+          method,
+          headers: { 'Content-Type': 'application/json', 'If-Match': revision, 'Idempotency-Key': requestId },
+          body: JSON.stringify({ ...bodyFor(params), request_id: requestId })
+        })
+        return mutationResult(result)
+      } catch (error) { return mutationResult(null, error) }
+    })
+  }
+  const intensifierSchema = z.union([
+    z.object({
+      type: z.literal('dropset'), count: z.number().int().min(1).max(20), pct: z.number().finite().min(1).max(100)
+    }).strict(),
+    z.object({
+      type: z.literal('restpause'), totalReps: z.number().int().min(1).max(1000), restSec: z.number().int().min(1).max(3600)
+    }).strict()
+  ])
+  const routineEntrySchema = z.object({
+    id: z.string().min(1).max(120), sets: z.number().int().min(1).max(100),
+    mode: z.enum(['reps', 'time', 'cardio']).optional(), reps: z.number().int().min(0).max(100000).optional(),
+    repsMin: z.number().int().min(0).max(100000).optional(), repsMax: z.number().int().min(0).max(100000).optional(),
+    sec: z.number().int().min(0).max(86400).optional(), min: z.number().int().min(0).max(100000).optional(),
+    speed: z.number().finite().min(0).max(10000).optional(), weight: z.number().finite().min(0).max(100000).optional(),
+    bodyweight: z.boolean().optional(), side: z.boolean().optional(), warmupSets: z.number().int().min(0).max(5).optional(),
+    warmupRestSec: z.number().int().min(0).max(86400).optional(), restSec: z.number().int().min(0).max(86400).optional(),
+    prog: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).optional(), inc: z.number().finite().min(0).max(100000).optional(),
+    deloadFactor: z.number().finite().min(0.5).max(0.95).optional(), sg: z.string().max(120).optional(), note: z.string().max(500).optional(),
+    intensifier: intensifierSchema.nullable().optional()
+  }).strict()
+  // Edit calls are patches, but they still expose only keys the API validates and the app
+  // renders. `id` identifies the occurrence; omitted nested values inherit that occurrence's
+  // stored config, while nullable fields explicitly clear a supported optional value.
+  const routineEntryPatchSchema = z.object({
+    id: z.string().min(1).max(120), sets: z.number().int().min(1).max(100).optional(),
+    mode: z.enum(['reps', 'time', 'cardio']).nullable().optional(), reps: z.number().int().min(0).max(100000).nullable().optional(),
+    repsMin: z.number().int().min(0).max(100000).nullable().optional(), repsMax: z.number().int().min(0).max(100000).nullable().optional(),
+    sec: z.number().int().min(0).max(86400).nullable().optional(), min: z.number().int().min(0).max(100000).nullable().optional(),
+    speed: z.number().finite().min(0).max(10000).nullable().optional(), weight: z.number().finite().min(0).max(100000).nullable().optional(),
+    bodyweight: z.boolean().nullable().optional(), side: z.boolean().nullable().optional(), warmupSets: z.number().int().min(0).max(5).nullable().optional(),
+    warmupRestSec: z.number().int().min(0).max(86400).nullable().optional(), restSec: z.number().int().min(0).max(86400).nullable().optional(),
+    prog: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).nullable().optional(),
+    policy: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).nullable().optional(),
+    inc: z.number().finite().min(0).max(100000).nullable().optional(), deloadFactor: z.number().finite().min(0.5).max(0.95).nullable().optional(),
+    sg: z.string().max(120).nullable().optional(), note: z.string().max(500).nullable().optional(),
+    intensifier: intensifierSchema.nullable().optional()
+  }).strict()
+  const routineSchema = z.object({
+    name: z.string().min(1).max(100), emoji: z.string().max(32).nullable().optional(),
+    prog: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).optional(),
+    excludeFromProgression: z.boolean().optional(), ex: z.array(routineEntrySchema).max(100).optional()
+  }).strict()
+  const exerciseSchema = z.object({
+    name: z.string().min(1).max(200), body_part: z.string().min(1).max(80), equipment: z.string().min(1).max(80),
+    description: z.string().max(1000).optional(), primary_muscles: z.array(z.string().min(1).max(80)).max(20).optional(),
+    secondary_muscles: z.array(z.string().min(1).max(80)).max(20).optional(), muscle_groups: z.array(z.string().min(1).max(80)).max(20).optional(),
+    instructions: z.array(z.string().min(1).max(500)).max(20).optional(), icon: z.string().max(64).nullable().optional()
+  }).strict()
+  const routinePatchSchema = z.object({
+    name: z.string().min(1).max(100).optional(), emoji: z.string().max(32).nullable().optional(),
+    prog: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).nullable().optional(),
+    excludeFromProgression: z.boolean().nullable().optional(), ex: z.array(routineEntryPatchSchema).max(100).optional()
+  }).strict()
+  // The app's custom-exercise editor uses an empty string/list as the clear operation. Do not
+  // advertise JSON null here: the API treats null as an omitted field for compatibility with
+  // older clients, which would make a successful-looking null patch a no-op.
+  const exercisePatchSchema = z.object({
+    name: z.string().min(1).max(200).optional(), body_part: z.string().min(1).max(80).optional(),
+    equipment: z.string().min(1).max(80).optional(), description: z.string().max(1000).optional(),
+    primary_muscles: z.array(z.string().min(1).max(80)).max(20).optional(),
+    secondary_muscles: z.array(z.string().min(1).max(80)).max(20).optional(),
+    muscle_groups: z.array(z.string().min(1).max(80)).max(20).optional(),
+    instructions: z.array(z.string().min(1).max(500)).max(20).optional(), icon: z.string().max(64).optional()
+  }).strict()
+  const profileSchema = z.object({ name: z.string().min(1).max(40), equipment: z.array(z.string().min(1).max(80)).max(200) }).strict()
+  const profilePatchSchema = z.object({ name: z.string().min(1).max(40).optional(), equipment: z.array(z.string().min(1).max(80)).max(200).optional() }).strict()
+  const planSchema = z.object({
+    week: z.record(z.union([z.string().min(1).max(120), z.array(z.string().min(1).max(120)).max(8)])).optional(),
+    dayPlan: z.record(z.union([z.string().min(1).max(120), z.literal('rest'), z.null()])).optional(),
+    weekStart: z.number().int().min(0).max(6).optional()
+  }).strict()
+  registerWriter({
+    name: 'create_routine', scope: 'routine:write', description: 'Create one routine directly in openGym. Include the complete nested exercise configuration: warm-up sets/rest, reps/time/cardio, load, per-side, progression step/mode/deload, superset, intensifier and notes. The routine icon is the emoji/glyph field. The server assigns the stable routine ID and requires an idempotent request_id.',
+    schema: { routine: routineSchema, request_id: z.string().min(1).max(200) }, pathFor: () => '/api/mcp/routines', bodyFor: ({ routine }) => ({ routine })
+  })
+  registerWriter({
+    name: 'edit_routine', scope: 'routine:write', revisionRequired: true, method: 'PUT', description: 'Edit one existing routine with a surgical changes object. Pass the strong revision returned by get_routine or another read; a stale revision is rejected with 412 so pending phone edits survive. request_id retries the same mutation exactly once.',
+    schema: { routine_id: z.string().min(1).max(120), changes: routinePatchSchema, revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ routine_id }) => `/api/mcp/routines/${encodeURIComponent(routine_id)}`, bodyFor: ({ changes }) => ({ changes })
+  })
+  registerWriter({
+    name: 'create_custom_exercise', scope: 'exercise:write', description: 'Create one custom exercise in the profile with app-valid body part/equipment vocabulary, primary and secondary muscles, instruction steps, description and optional icon. The stable custom ID is generated by the server.',
+    schema: { exercise: exerciseSchema, request_id: z.string().min(1).max(200) }, pathFor: () => '/api/mcp/exercises', bodyFor: ({ exercise }) => ({ exercise })
+  })
+  registerWriter({
+    name: 'edit_custom_exercise', scope: 'exercise:write', revisionRequired: true, method: 'PUT', description: 'Edit one existing custom exercise while preserving its stable ID, history and private media unless explicitly changed through the image tool. Pass the revision returned by get_exercise/list_exercises.',
+    schema: { exercise_id: z.string().min(1).max(120), changes: exercisePatchSchema, revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ exercise_id }) => `/api/mcp/exercises/${encodeURIComponent(exercise_id)}`, bodyFor: ({ changes }) => ({ changes })
+  })
+  registerWriter({
+    name: 'upload_exercise_image', scope: 'image:write', revisionRequired: true, description: 'Upload or replace a private custom-exercise image. Send base64 image data (jpeg/png/webp); the server normalizes it, checks ownership/quota/checksum, and never exposes a public URL. Pass the revision returned by an exercise read so a concurrent replacement cannot win silently.',
+    schema: { exercise_id: z.string().min(1).max(120), mime: z.enum(['image/jpeg', 'image/png', 'image/webp']), data: z.string().min(1).max(14 * 1024 * 1024), revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ exercise_id }) => `/api/mcp/exercises/${encodeURIComponent(exercise_id)}/image`, bodyFor: ({ mime, data }) => ({ mime, data })
+  })
+  registerWriter({
+    name: 'create_equipment_profile', scope: 'equipment:write', description: 'Create an equipment profile using the same catalogue equipment identifiers as the app. Set active=true to select it in the exercise picker.',
+    schema: { profile: profileSchema, active: z.boolean().optional(), request_id: z.string().min(1).max(200) }, pathFor: () => '/api/mcp/equipment', bodyFor: ({ profile, active }) => ({ profile, ...(active != null ? { active } : {}) })
+  })
+  registerWriter({
+    name: 'edit_equipment_profile', scope: 'equipment:write', revisionRequired: true, method: 'PUT', description: 'Edit one equipment profile without replacing other profiles. Pass the revision returned by list_equipment_profiles; optionally select or deselect it with active.',
+    schema: { profile_id: z.string().min(1).max(120), changes: profilePatchSchema, active: z.boolean().optional(), revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ profile_id }) => `/api/mcp/equipment/${encodeURIComponent(profile_id)}`, bodyFor: ({ changes, active }) => ({ changes, ...(active != null ? { active } : {}) })
+  })
+  registerWriter({
+    name: 'update_week_plan', scope: 'plan:write', revisionRequired: true, method: 'PUT', description: 'Patch the weekly plan: each weekday may contain an array of routine IDs, while a date override remains one routine ID or the rest sentinel. Pass the revision returned by a plan read; no unrelated days are replaced.',
+    schema: { plan: planSchema, revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: () => '/api/mcp/plan', bodyFor: ({ plan }) => ({ plan })
+  })
   if (grantedScopes.includes('workout:write')) {
     const workoutSetSchema = z.object({
       done: z.literal(true).describe('Completed set; create_workout records finished sets only.'),
@@ -351,7 +495,7 @@ function makeServer(token, grantedScopes = []) {
       }
     )
   }
-  server.tool(
+  if (grantedScopes.includes('routine:propose')) server.tool(
     'propose_routine',
     'Save a validated routine draft for review inside openGym. Approval is intentionally performed in the app, never by the model.',
     {
@@ -374,7 +518,7 @@ function makeServer(token, grantedScopes = []) {
       }
     }
   )
-  server.tool(
+  if (grantedScopes.includes('routine:read') || grantedScopes.includes('routine:propose')) server.tool(
     'get_routine_proposal',
     'Inspect a pending or approved routine proposal. The model cannot approve it.',
     { proposal_id: z.string().min(1) },
@@ -390,11 +534,11 @@ function makeServer(token, grantedScopes = []) {
   return server
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, maxBytes = MAX_JSON_BODY) {
   let size = 0; const chunks = []
   for await (const chunk of req) {
     size += chunk.length
-    if (size > 2 * 1024 * 1024) throw Object.assign(new Error('request too large'), { status: 413 })
+    if (size > maxBytes) throw Object.assign(new Error('request too large'), { status: 413 })
     chunks.push(chunk)
   }
   if (!chunks.length) return {}
@@ -410,7 +554,9 @@ function cors(res) {
 
 async function handleOAuthRegister(req, res) {
   let body
-  try { body = await readJsonBody(req) }
+  // DCR metadata is intentionally kept small. The larger envelope is only for an already
+  // authenticated MCP POST carrying a bounded image payload; do not widen this public endpoint.
+  try { body = await readJsonBody(req, 256 * 1024) }
   catch (error) { return jsonResponse(res, error.status || 400, { error: 'invalid_client_metadata' }) }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return jsonResponse(res, 400, { error: 'invalid_client_metadata' })
   try {
@@ -435,6 +581,12 @@ const scopeCopy = {
   'bodyweight:read': ['View bodyweight', 'Read your bodyweight measurements.'],
   'progress:read': ['View progress', 'Read progress trends and training insights.'],
   'workout:write': ['Create workouts', 'Record completed workouts in your OpenGym account.'],
+  'exercise:write': ['Edit exercises', 'Create and update your custom exercise metadata and instruction steps.'],
+  'routine:write': ['Edit routines', 'Create and update routines, targets, progression and notes.'],
+  'image:write': ['Upload exercise images', 'Add or replace private images on your custom exercises.'],
+  'equipment:read': ['View equipment profiles', 'See the equipment profiles used by your exercise picker.'],
+  'equipment:write': ['Edit equipment profiles', 'Create and update your equipment profiles and selection.'],
+  'plan:write': ['Plan your week', 'Update weekday routines and one-off date overrides.'],
   'routine:propose': ['Propose routines for your review', 'Save routine drafts for you to review in OpenGym.']
 }
 

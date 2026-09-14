@@ -44,6 +44,8 @@ function entryView(e, S) {
     body_part: ex.bp || null,
     mode,
     target: e.target || null,
+    note: e.note || null,
+    note_pinned: e.notePin === true,
     sets: (e.sets || []).map(s => ({
       done: !!s.done,
       label: setLabel(e.id, { ...s, done: undefined }, cfg),
@@ -51,9 +53,25 @@ function entryView(e, S) {
       r: Number(s.r) || 0,
       sec: Number(s.sec) || 0,
       min: Number(s.min) || 0,
-      speed: Number(s.speed) || 0
+      speed: Number(s.speed) || 0,
+      ...(Object.prototype.hasOwnProperty.call(s, 'rir') ? { rir: s.rir } : {}),
+      ...(Object.prototype.hasOwnProperty.call(s, 'rpe') ? { rpe: s.rpe } : {}),
+      ...(Object.prototype.hasOwnProperty.call(s, 'note') ? { note: s.note } : {}),
+      ...(Object.prototype.hasOwnProperty.call(s, 'notePin') ? { note_pinned: s.notePin === true } : {}),
+      ...(s.phase ? { phase: s.phase } : {}),
+      ...(s.type ? { type: s.type } : {}),
+      ...(s.warmup != null ? { warmup: s.warmup === true } : {}),
+      ...(s.sides && typeof s.sides === 'object' ? { sides: JSON.parse(JSON.stringify(s.sides)) } : {}),
+      ...(Array.isArray(s.drops) ? { drops: JSON.parse(JSON.stringify(s.drops)) } : {}),
+      ...(Array.isArray(s.clusters) ? { clusters: JSON.parse(JSON.stringify(s.clusters)) } : {})
     }))
   }
+}
+
+function muscleFields(ex) {
+  const primary = Array.isArray(ex?.primaries) ? ex.primaries : (Array.isArray(ex?.primaryMuscles) ? ex.primaryMuscles : (ex?.tg ? [ex.tg] : []))
+  const secondary = Array.isArray(ex?.secondaries) ? ex.secondaries : (Array.isArray(ex?.secondaryMuscles) ? ex.secondaryMuscles : (Array.isArray(ex?.sm) ? ex.sm : (ex?.sm ? [ex.sm] : [])))
+  return { primary_muscles: primary, secondary_muscles: secondary }
 }
 
 // Best estimate per exercise, mirroring the UI's PR table: every eligible set across history, biggest wins.
@@ -95,7 +113,8 @@ export const listExercises = {
     const size = Math.min(Math.max(limit || 100, 1), 200)
     const exercises = all.slice(start, start + size).map(e => ({
       id: e.id, name: e.n, body_part: e.bp || null, equipment: e.eq || null,
-      description: e.desc || null, custom: !!e.custom, has_private_image: !!e.media?.id
+      description: e.desc || null, ...muscleFields(e), instructions: e.st || [], icon: e.icon || null,
+      custom: !!e.custom, has_private_image: !!e.media?.id
     }))
     return { offset: start, limit: size, total: all.length, next_offset: start + exercises.length < all.length ? start + exercises.length : null, exercises }
   }
@@ -110,7 +129,10 @@ export const searchExercises = {
     if (!S) return noState()
     const all = allExercises(S).map((e, i) => ({ e, score: searchScore(e, query), i })).filter(x => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i)
     const start = Math.max(0, offset); const size = Math.min(Math.max(limit || 100, 1), 200)
-    const exercises = all.slice(start, start + size).map(({ e }) => ({ id: e.id, name: e.n, body_part: e.bp || null, equipment: e.eq || null, custom: !!e.custom, has_private_image: !!e.media?.id }))
+    const exercises = all.slice(start, start + size).map(({ e }) => ({
+      id: e.id, name: e.n, body_part: e.bp || null, equipment: e.eq || null, ...muscleFields(e),
+      instructions: e.st || [], icon: e.icon || null, custom: !!e.custom, has_private_image: !!e.media?.id
+    }))
     return { query, offset: start, limit: size, total: all.length, next_offset: start + exercises.length < all.length ? start + exercises.length : null, exercises }
   }
 }
@@ -124,7 +146,11 @@ export const getExercise = {
     if (!S) return noState()
     const e = exFor(exercise_id, S)
     if (e.missing) { const err = new Error(`no exercise with id ${JSON.stringify(exercise_id)}`); err.code = 'ENOENT'; throw err }
-    return { id: e.id, name: e.n, body_part: e.bp || null, equipment: e.eq || null, target: e.tg || null, muscles: e.sm || [], instructions: e.st || [], description: e.desc || null, custom: !!e.custom, has_private_image: !!e.media?.id }
+    return {
+      id: e.id, name: e.n, body_part: e.bp || null, equipment: e.eq || null, target: e.tg || null,
+      muscles: e.sm || [], ...muscleFields(e), instructions: e.st || [], description: e.desc || null,
+      icon: e.icon || null, custom: !!e.custom, has_private_image: !!e.media?.id
+    }
   }
 }
 
@@ -186,6 +212,10 @@ export const getRoutine = {
           min: mode === 'cardio' ? (cfg.min || 0) : undefined,
           speed: mode === 'cardio' ? (cfg.speed || 0) : undefined,
           weight: cfg.weight != null ? cfg.weight : undefined,
+          bodyweight: cfg.bodyweight === true ? true : undefined,
+          reps_per_side: cfg.side === true ? true : undefined,
+          warmup_sets: cfg.warmupSets != null ? cfg.warmupSets : undefined,
+          warmup_rest_sec: cfg.warmupRestSec != null ? cfg.warmupRestSec : undefined,
           increment: cfg.inc != null ? cfg.inc : undefined,
           deload_factor: cfg.deloadFactor != null ? cfg.deloadFactor : undefined,
           // The exercise's own rest (issue #10). Absent means it inherits the global rest
@@ -194,6 +224,9 @@ export const getRoutine = {
           policy: policyFor(cfg, r, mode),
           policy_override: cfg.prog || null,
           superset_group: cfg.sg || null,
+          note: cfg.note || null,
+          intensifier: cfg.intensifier || null,
+          raw_config: JSON.parse(JSON.stringify(cfg)),
           summary: exLine(cfg, S.unit || 'kg')
         }
       })
@@ -215,8 +248,10 @@ export const getWeekPlan = {
     return {
       today: isoToday,
       weekdays: [0, 1, 2, 3, 4, 5, 6].map(d => {
-        const rid = S.week?.[d] || null
-        const r = rid ? (S.routines || []).find(x => x.id === rid) : null
+        const routineIds = [].concat(S.week?.[d] || []).filter(Boolean)
+        const routines = routineIds.map(rid => (S.routines || []).find(x => x.id === rid)).filter(Boolean)
+        const rid = routineIds[0] || null
+        const r = routines[0] || null
         // Surface today's override only (not the whole dayPlan dict — usually empty, but might
         // have grown from repeated "move this day" actions).
         const overrideForToday = d === todayWd ? (S.dayPlan?.[isoToday] ?? null) : null
@@ -226,11 +261,31 @@ export const getWeekPlan = {
           routine_id: rid,
           routine_name: r?.name || null,
           routine_emoji: r?.emoji || null,
+          routine_ids: routineIds,
+          routine_names: routines.map(routine => routine.name),
           override_for_today_or_null: overrideForToday
         }
       }),
       today_routine_id: effectiveRoutineId(S, isoToday),
       today_routine_name: effectiveRoutine(S, isoToday)?.name || null
+    }
+  }
+}
+
+/** list_equipment_profiles — the same filters the exercise picker can use. */
+export const listEquipmentProfiles = {
+  name: 'list_equipment_profiles',
+  description: 'List saved equipment profiles and identify the profile currently used by the exercise picker. This is read-only; use the equipment write tools to change a profile.',
+  schema: {},
+  handler: (_, context) => {
+    const S = stateOf(context)
+    if (!S) return noState()
+    return {
+      active_profile_id: S.activeEquipId || null,
+      filter_enabled: S.equipFilterOn === true,
+      profiles: (Array.isArray(S.equipProfiles) ? S.equipProfiles : []).map(profile => ({
+        id: profile.id, name: profile.name, equipment: Array.isArray(profile.equipment) ? [...profile.equipment] : []
+      }))
     }
   }
 }
@@ -614,7 +669,7 @@ export const previewSession = {
 /* ---------- registration list ---------- */
 
 export const TOOLS = [
-  listExercises, searchExercises, getExercise, listRoutines, getRoutine, previewSession, getWeekPlan, listWorkouts, getWorkout, getBodyweight, estimate1rm, muscleBalance
+  listExercises, searchExercises, getExercise, listRoutines, getRoutine, previewSession, getWeekPlan, listEquipmentProfiles, listWorkouts, getWorkout, getBodyweight, estimate1rm, muscleBalance
 ]
 
 function noState() {

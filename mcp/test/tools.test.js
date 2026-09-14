@@ -202,6 +202,23 @@ describe('get_routine', () => {
     expect(c.min).toBe(20)
     expect(c.speed).toBe(8)
   })
+
+  test('round-trips the nested targets used by the routine editor, including zero-valued fields', () => {
+    const cfg = S.routines[0].ex[0]
+    Object.assign(cfg, {
+      mode: 'reps', reps: 8, repsMin: 6, repsMax: 10, weight: 42, bodyweight: false, side: true,
+      warmupSets: 2, warmupRestSec: 30, restSec: 90, inc: 2.5, deloadFactor: 0.8,
+      sg: 'A', note: 'controlled tempo', intensifier: { type: 'dropset', count: 2, pct: 20 }
+    })
+
+    const view = call('get_routine', { routine_id: S.routines[0].id }).exercises[0]
+    expect(view).toMatchObject({
+      reps: 8, reps_min: 6, reps_max: 10, weight: 42, bodyweight: undefined, reps_per_side: true,
+      warmup_sets: 2, warmup_rest_sec: 30, rest_sec: 90, increment: 2.5, deload_factor: 0.8,
+      superset_group: 'A', note: 'controlled tempo', intensifier: { type: 'dropset', count: 2, pct: 20 }
+    })
+    expect(view.raw_config).toMatchObject({ bodyweight: false, side: true, warmupSets: 2, warmupRestSec: 30 })
+  })
 })
 
 /* ---------- get_week_plan ---------- */
@@ -402,6 +419,20 @@ describe('get_workout', () => {
     const w = call('get_workout', { date: '2026-07-25' })
     expect(w.entries[0].mode).toBe('cardio')
     expect(w.entries[0].sets[0].label).toBe('20 min @ 8 km/h')
+  })
+
+  test('returns raw RIR/RPE, notes, phase and side details without normalising effort scales', () => {
+    S.workouts = [{
+      id: 'effort-1', d: '2026-07-25', start: 0, end: 1000, routineId: 'x', name: 'Effort',
+      entries: [{ id: '0001', target: { sets: 1, reps: 5 }, note: 'entry note', notePin: true, sets: [{
+        w: 50, r: 5, done: true, rir: 0, rpe: 0, phase: 'warmup', type: 'straight', note: 'set note',
+        notePin: true, sides: { left: { w: 25, r: 5 }, right: { w: 25, r: 5 } }
+      }] }]
+    }]
+    const view = call('get_workout', { workout_id: 'effort-1' }).entries[0]
+    expect(view).toMatchObject({ note: 'entry note', note_pinned: true })
+    expect(view.sets[0]).toMatchObject({ rir: 0, rpe: 0, note: 'set note', note_pinned: true, phase: 'warmup', type: 'straight' })
+    expect(view.sets[0].sides).toEqual({ left: { w: 25, r: 5 }, right: { w: 25, r: 5 } })
   })
 })
 

@@ -212,7 +212,11 @@ try {
       return { response: r, data: JSON.parse(parsed) }
     }
     await call(2, 'notifications/initialized', {})
-    const listed = await call(3, 'tools/list', {}); assert.equal(listed.response.status, 200); assert.ok(listed.data.result.tools.length >= 13)
+    const listed = await call(3, 'tools/list', {}); assert.equal(listed.response.status, 200)
+    const expectedTools = authToken === proposeGrant
+      ? ['get_routine_proposal', 'propose_routine']
+      : ['estimate_1rm', 'get_bodyweight', 'get_exercise', 'get_routine', 'get_routine_proposal', 'get_week_plan', 'get_workout', 'list_exercises', 'list_routines', 'list_workouts', 'muscle_balance', 'preview_session', 'propose_routine', 'search_exercises']
+    assert.deepEqual(listed.data.result.tools.map(tool => tool.name).sort(), expectedTools)
     return { sid, call }
   }
   const localClient = await mcpClient('local-fixture'); const hostedClient = await mcpClient('hosted-fixture')

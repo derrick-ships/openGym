@@ -16,7 +16,7 @@ import LineChart from './components/LineChart.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
 import { Button, Slider, Switch, Segmented, SelectRow, Row, TextField, NumberField, MultiSelectRow } from './components/ui.jsx'
-import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
+import { glyphOf, GLYPH_GROUPS, GLYPHS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import MuscleExplorer from './components/MuscleExplorer.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
@@ -45,6 +45,12 @@ const update = (...a) => useStore.getState().update(...a)
 const ui = () => useUI.getState()
 const toast = m => ui().toast(m)
 const snd = () => S().sound
+
+function customExerciseGlyph(value) {
+  if (!value) return null
+  const glyph = glyphOf(value)
+  return GLYPHS.includes(glyph) ? glyph : null
+}
 
 /* ============================ custom confirm dialog ============================ */
 function ConfirmDialog({ title, message, confirmText, cancelText, danger, onConfirm, onCancel, close }) {
@@ -771,6 +777,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   const [bp, setBp] = useState(existing ? existing.bp : '')
   const [eq, setEq] = useState(existing ? (existing.eq || '') : '')
   const [desc, setDesc] = useState(existing ? (existing.desc || '') : '')
+  const [icon, setIcon] = useState(() => customExerciseGlyph(existing?.icon))
   const [image, setImage] = useState(null)
   const [removeImage, setRemoveImage] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -812,6 +819,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     const prim = bp === 'cardio' ? ['cardiovascular system'] : [...primaries]
     const sm = secondaries.filter(m => !prim.includes(m))
     const groups = [...prim, ...sm]
+    const selectedIcon = customExerciseGlyph(icon)
     let id = existing && existing.id
     let media = existing?.media || null
     if (removeImage) media = null
@@ -821,10 +829,12 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     }
     if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) {
       c.n = name; c.bp = bp; c.desc = d; c.tg = prim[0] || ''; c.sm = sm; c.muscleGroups = groups; c.primaries = prim; c.secondaries = sm; c.eq = eq; c.media = media
+      if (selectedIcon) c.icon = selectedIcon
+      else delete c.icon
     } })
     else {
       id = 'c' + uid()
-      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, bp, desc: d, tg: prim[0] || '', sm, muscleGroups: groups, primaries: prim, secondaries: sm, eq, custom: true, ...(media ? { media } : {}) }) })
+      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, bp, desc: d, tg: prim[0] || '', sm, muscleGroups: groups, primaries: prim, secondaries: sm, eq, custom: true, ...(selectedIcon ? { icon: selectedIcon } : {}), ...(media ? { media } : {}) }) })
     }
     setSaving(false)
     close()
@@ -855,6 +865,13 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     {bp === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
     <textarea className="input" rows={4} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
       value={desc} onChange={e => setDesc(e.target.value)} />
+    <div className="row" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+      <span className="small dim">{t('Pick an icon')}</span>
+      <button type="button" className="iconbtn" aria-label={t('Pick an icon')}
+        onClick={() => glyphPicker(icon || 'dumbbell', setIcon)}>
+        <Icon name={customExerciseGlyph(icon) || 'dumbbell'} />
+      </button>
+    </div>
     <div className="small dim" style={{ marginTop: 12 }}>{t('Private exercise image (JPEG, PNG or WebP; max 10 MiB)')}</div>
     {(preview || existingPreview) && <img src={preview || existingPreview} alt={t('Exercise preview')} style={{ display: 'block', width: 160, maxHeight: 120, objectFit: 'cover', borderRadius: 10, margin: '8px 0' }} />}
     <div className="row" style={{ gap: 8, marginTop: 8 }}>

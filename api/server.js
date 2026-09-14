@@ -60,6 +60,12 @@ const enabled = name => /^(1|true|yes|on)$/i.test(process.env[name] || '');
 const MCP_ENABLED = enabled('MCP_ENABLED');
 const PROPOSALS_ENABLED = enabled('MCP_PROPOSALS_ENABLED');
 const ASSETS_ENABLED = enabled('CUSTOM_IMAGES_ENABLED');
+// The browser and native paired clients need the public gateway address, not the API's
+// container address. Keep it in the API's public capability document so clients never guess
+// localhost (or an internal Docker hostname). Compose may override this for a private install.
+const MCP_PUBLIC_URL = String(process.env.MCP_PUBLIC_URL || (() => {
+  try { return `${new URL(ORIGIN).origin}/mcp`; } catch { return 'https://gym.derrickserna.com/mcp'; }
+})()).replace(/\/+$/, '');
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -578,7 +584,17 @@ function recoverStateTxn(uid) {
 
 /* ---------- scoped MCP grants + private assets ---------- */
 const grantFile = path.join(DATA, 'mcp-grants.json');
-const GRANT_SCOPES = new Set(['exercise:read', 'routine:read', 'workout:read', 'bodyweight:read', 'progress:read', 'workout:write', 'routine:propose']);
+const GRANT_SCOPES = new Set([
+  'exercise:read', 'exercise:write',
+  'routine:read', 'routine:write', 'routine:propose',
+  'workout:read', 'workout:write',
+  'bodyweight:read', 'progress:read',
+  'image:write', 'equipment:read', 'equipment:write', 'plan:write'
+]);
+// This is applied only while registering a brand-new OAuth client. Existing client metadata and
+// bearer grants retain their stored scopes; a fresh consent screen is the only place where this
+// complete capability menu may be requested by default.
+const MCP_DEFAULT_OAUTH_SCOPES = [...GRANT_SCOPES];
 const MAX_PROPOSALS = 500;
 let grants = { grants: [] };
 let grantsError = null;
@@ -732,7 +748,7 @@ function registrationMetadata(body) {
   const tokenEndpointAuthMethod = String(body?.token_endpoint_auth_method || 'none');
   if (tokenEndpointAuthMethod !== 'none') return { error: 'public_pkce_client_required' };
   const requested = String(body?.scope || '').trim().split(/\s+/).filter(Boolean);
-  const scope = [...new Set(requested.length ? requested : ['exercise:read', 'routine:read', 'workout:read', 'bodyweight:read', 'progress:read', 'workout:write'])];
+  const scope = [...new Set(requested.length ? requested : MCP_DEFAULT_OAUTH_SCOPES)];
   if (!scope.length || scope.some(s => !GRANT_SCOPES.has(s))) return { error: 'invalid_scope' };
   return {
     clientId: crypto.randomBytes(18).toString('base64url'),
@@ -765,6 +781,419 @@ function requireGrant(req, res, scope) {
     return null;
   }
   return grant;
+}
+
+/* ---------- MCP profile writers ----------
+ * Every writer below goes through the same compare/journal/receipt path as PUT /api/data. The
+ * MCP gateway is intentionally stateless, so every mutation must carry the caller's strong ETag
+ * in If-Match. Append-only creates may obtain a current validator because they do not replace an
+ * existing resource; edits and replacements must use the revision the caller read. A bearer grant selects the user; the request body
+ * never gets to select one. The validators accept the app's existing nested plan shape and reject
+ * unknown fields rather than quietly dropping a model's requested setting.
+ */
+const MCP_DEFAULT_STATE = () => ({
+  unit: 'kg', routines: [], week: {}, dayPlan: {}, customEx: [], workouts: [], bodyweight: [], equipProfiles: []
+});
+const MCP_ROUTINE_FIELDS = new Set(['id', 'name', 'emoji', 'prog', 'excludeFromProgression', 'ex']);
+const MCP_ENTRY_FIELDS = new Set([
+  'id', 'sets', 'mode', 'reps', 'repsMin', 'repsMax', 'sec', 'min', 'speed', 'weight', 'restSec',
+  'warmupRestSec', 'note', 'warmupSets', 'bodyweight', 'side', 'intensifier', 'prog', 'inc', 'deloadFactor', 'sg', 'policy'
+]);
+const MCP_INTENSIFIER_FIELDS = new Set(['type', 'count', 'pct', 'totalReps', 'restSec']);
+const MCP_POLICIES = new Set(['off', 'linear', 'greyskull', 'double', 'time']);
+const MCP_MODES = new Set(['reps', 'time', 'cardio']);
+const MCP_EXERCISE_FIELDS = new Set([
+  'id', 'name', 'n', 'body_part', 'bp', 'equipment', 'eq', 'description', 'desc',
+  'primary_muscles', 'primaryMuscles', 'primaries', 'secondary_muscles', 'secondaryMuscles', 'secondaries',
+  'muscle_groups', 'muscleGroups', 'instructions', 'steps', 'st', 'icon'
+]);
+const MCP_PROFILE_FIELDS = new Set(['id', 'name', 'equipment']);
+const MCP_PLAN_FIELDS = new Set(['week', 'dayPlan', 'weekStart']);
+const MCP_BODY_PARTS = new Set(EXDB.map(exercise => exercise.bp).filter(Boolean));
+const MCP_EQUIPMENT = new Set(EXDB.map(exercise => exercise.eq).filter(Boolean));
+MCP_EQUIPMENT.add('body weight');
+const MCP_MUSCLES = new Set(['trapezius', 'deltoids', 'chest', 'upper-back', 'serratus', 'biceps', 'triceps', 'forearm', 'abs', 'obliques', 'lower-back', 'gluteal', 'quadriceps', 'hamstring', 'adductors', 'hip-flexors', 'calves', 'tibialis', 'cardiovascular system']);
+const MCP_GLYPHS = new Set(['figureStrength', 'arm', 'abs', 'legs', 'pullup', 'dumbbell', 'barbell', 'kettlebell', 'plate', 'machine', 'figureRun', 'bike', 'swim', 'boxing', 'timer', 'stretch', 'moon', 'heart', 'flame', 'bolt']);
+const mcpClone = value => JSON.parse(JSON.stringify(value));
+function mcpString(value, max, { allowEmpty = false } = {}) {
+  if (typeof value !== 'string' || value.length > max) return null;
+  const out = value.trim();
+  return out || allowEmpty ? out : null;
+}
+function mcpNumber(value, { min = 0, max = 100000, integer = false } = {}) {
+  if (typeof value === 'boolean' || value == null || value === '') return null;
+  const out = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(out) || out < min || out > max || (integer && !Number.isSafeInteger(out))) return null;
+  return out;
+}
+function mcpStringList(value, { maxItems = 20, maxLength = 80 } = {}) {
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const out = value.map(item => mcpString(item, maxLength)).filter(item => item != null);
+  return out.length === value.length && new Set(out.map(item => item.toLowerCase())).size === out.length ? out : null;
+}
+function mcpDate(value) {
+  const out = mcpString(value, 10);
+  if (!out || !/^\d{4}-\d{2}-\d{2}$/.test(out)) return null;
+  const [year, month, day] = out.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return year >= 1970 && year <= 9999 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? out : null;
+}
+function mcpError(message, status = 400) { return { error: message, status }; }
+
+function normalizeMcpIntensifier(value) {
+  if (value == null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !MCP_INTENSIFIER_FIELDS.has(key))) return mcpError('routine intensifier is invalid');
+  const type = mcpString(value.type, 20);
+  if (!type || !['dropset', 'restpause'].includes(type)) return mcpError('routine intensifier is invalid');
+  const out = { type };
+  if (type === 'dropset') {
+    const count = mcpNumber(value.count, { min: 1, max: 20, integer: true });
+    const pct = mcpNumber(value.pct, { min: 1, max: 100 });
+    if (count == null || pct == null) return mcpError('drop-set intensifier is invalid');
+    out.count = count; out.pct = pct;
+  } else {
+    const totalReps = mcpNumber(value.totalReps, { min: 1, max: 1000, integer: true });
+    const restSec = mcpNumber(value.restSec, { min: 1, max: 3600, integer: true });
+    if (totalReps == null || restSec == null) return mcpError('rest-pause intensifier is invalid');
+    out.totalReps = totalReps; out.restSec = restSec;
+  }
+  return out;
+}
+
+function normalizeMcpEntry(value, state, { base = null } = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return mcpError('routine exercise entry is invalid');
+  if (Object.keys(value).some(key => !MCP_ENTRY_FIELDS.has(key))) return mcpError('routine exercise entry contains unsupported fields');
+  const id = mcpString(value.id, 120);
+  const customIds = new Set(Array.isArray(state?.customEx) ? state.customEx.map(ex => String(ex?.id || '')) : []);
+  if (!id || !isSafeId(id) || (!EXDB.some(ex => ex.id === id) && !customIds.has(id))) return mcpError('routine contains an unknown exercise');
+  // An edit may patch one nested target (for example only `weight` or `restSec`). The base
+  // occurrence supplies required fields that were omitted; an explicit null still fails rather
+  // than silently deleting the required set count.
+  const hasSets = Object.prototype.hasOwnProperty.call(value, 'sets');
+  const sets = mcpNumber(hasSets ? value.sets : base?.sets, { min: 1, max: 100, integer: true });
+  if (sets == null) return mcpError('routine set count is invalid');
+  const out = base ? mcpClone(base) : { id, sets };
+  out.id = id; out.sets = sets;
+  const integerFields = new Set(['reps', 'repsMin', 'repsMax', 'warmupSets', 'sec', 'min', 'warmupRestSec', 'restSec']);
+  const limits = {
+    reps: [0, 100000], repsMin: [0, 100000], repsMax: [0, 100000], warmupSets: [0, 5], sec: [0, 86400], min: [0, 100000],
+    speed: [0, 10000], weight: [0, 100000], restSec: [0, 86400], warmupRestSec: [0, 86400], inc: [0, 100000], deloadFactor: [0.5, 0.95]
+  };
+  for (const [field, [min, max]] of Object.entries(limits)) {
+    if (value[field] === null) { delete out[field]; continue; }
+    if (value[field] == null) continue;
+    const number = mcpNumber(value[field], { min, max, integer: integerFields.has(field) });
+    if (number == null || (field === 'warmupSets' && number > 5)) return mcpError(`routine ${field} is invalid`);
+    out[field] = number;
+  }
+  if (value.mode === null) delete out.mode;
+  if (value.mode != null) {
+    const mode = mcpString(value.mode, 20);
+    if (!mode || !MCP_MODES.has(mode)) return mcpError('routine mode is invalid');
+    out.mode = mode;
+  }
+  if (value.bodyweight === null) delete out.bodyweight;
+  if (value.bodyweight != null) {
+    if (typeof value.bodyweight !== 'boolean') return mcpError('routine bodyweight flag is invalid');
+    out.bodyweight = value.bodyweight;
+  }
+  if (value.side === null) delete out.side;
+  if (value.side != null) {
+    if (typeof value.side !== 'boolean') return mcpError('routine per-side flag is invalid');
+    out.side = value.side;
+  }
+  for (const field of ['note', 'sg']) {
+    if (value[field] === null) { delete out[field]; continue; }
+    if (value[field] == null) continue;
+    const text = mcpString(value[field], field === 'note' ? 500 : 120, { allowEmpty: true });
+    if (text == null) return mcpError(`routine ${field} is invalid`);
+    if (text) out[field] = text;
+  }
+  const policy = value.prog ?? value.policy;
+  if (value.prog === null || value.policy === null) delete out.prog;
+  if (policy != null) {
+    const text = mcpString(policy, 20);
+    if (!text || !MCP_POLICIES.has(text)) return mcpError('routine progression mode is invalid');
+    out.prog = text;
+  }
+  if (value.intensifier === null) delete out.intensifier;
+  if (value.intensifier != null) {
+    const intensifier = normalizeMcpIntensifier(value.intensifier);
+    if (intensifier?.error) return intensifier;
+    out.intensifier = intensifier;
+  }
+  return out;
+}
+
+function normalizeMcpRoutine(value, state, { id = null, base = null } = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return mcpError('routine is invalid');
+  if (Object.keys(value).some(key => !MCP_ROUTINE_FIELDS.has(key))) return mcpError('routine contains unsupported fields');
+  const out = base ? mcpClone(base) : { id: id || crypto.randomBytes(12).toString('base64url'), ex: [] };
+  if (!isSafeId(out.id)) return mcpError('routine id is invalid');
+  if (value.id != null && String(value.id) !== out.id) return mcpError('routine id cannot be changed');
+  if (value.name != null) {
+    const name = mcpString(value.name, 100);
+    if (!name) return mcpError('routine name is invalid');
+    out.name = name;
+  }
+  if (!mcpString(out.name, 100)) return mcpError('routine name is required');
+  if (Object.prototype.hasOwnProperty.call(value, 'emoji')) {
+    if (value.emoji == null) { delete out.emoji; }
+    else {
+      const emoji = mcpString(value.emoji, 32, { allowEmpty: true });
+      if (emoji == null || (emoji && !MCP_GLYPHS.has(emoji))) return mcpError('routine icon is invalid');
+      if (emoji) out.emoji = emoji; else delete out.emoji;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'prog')) {
+    if (value.prog == null) delete out.prog;
+    else {
+      const prog = mcpString(value.prog, 20);
+      if (!prog || !MCP_POLICIES.has(prog)) return mcpError('routine progression mode is invalid');
+      out.prog = prog;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'excludeFromProgression')) {
+    if (value.excludeFromProgression == null) delete out.excludeFromProgression;
+    else {
+      if (typeof value.excludeFromProgression !== 'boolean') return mcpError('routine progression exclusion is invalid');
+      if (value.excludeFromProgression) out.excludeFromProgression = true; else delete out.excludeFromProgression;
+    }
+  }
+  if (value.ex != null) {
+    if (!Array.isArray(value.ex) || value.ex.length > 100) return mcpError('routine exercises are invalid');
+    const entries = [];
+    // IDs are not unique within a routine: the same exercise can intentionally appear twice
+    // with different notes, supersets, or progression settings. Consume matching base entries
+    // in occurrence order so omitted fields stay attached to their own occurrence.
+    const baseEntries = new Map();
+    for (const entry of base?.ex || []) {
+      const key = String(entry?.id || '');
+      const entriesForId = baseEntries.get(key) || [];
+      entriesForId.push(entry);
+      baseEntries.set(key, entriesForId);
+    }
+    const baseEntryOffsets = new Map();
+    for (const entry of value.ex) {
+      const key = String(entry?.id || '');
+      const entriesForId = baseEntries.get(key) || [];
+      const offset = baseEntryOffsets.get(key) || 0;
+      const baseEntry = entriesForId[offset] || null;
+      baseEntryOffsets.set(key, offset + 1);
+      const clean = normalizeMcpEntry(entry, state, { base: baseEntry });
+      if (clean?.error) return clean;
+      entries.push(clean);
+    }
+    out.ex = entries;
+  }
+  if (!Array.isArray(out.ex) || out.ex.length > 100) return mcpError('routine exercises are invalid');
+  return out;
+}
+
+function normalizeMcpExercise(value, { id = null, base = null } = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return mcpError('custom exercise is invalid');
+  if (Object.keys(value).some(key => !MCP_EXERCISE_FIELDS.has(key))) return mcpError('custom exercise contains unsupported fields');
+  const out = base ? mcpClone(base) : { id: id || `c${crypto.randomBytes(12).toString('base64url')}`, custom: true };
+  if (!isSafeId(out.id)) return mcpError('custom exercise id is invalid');
+  if (value.id != null && String(value.id) !== out.id) return mcpError('custom exercise id cannot be changed');
+  const name = value.name ?? value.n;
+  if (name != null) {
+    const text = mcpString(name, 200);
+    if (!text) return mcpError('custom exercise name is required');
+    out.n = text;
+  }
+  if (!mcpString(out.n, 200)) return mcpError('custom exercise name is required');
+  const bodyPartKey = Object.prototype.hasOwnProperty.call(value, 'body_part') ? 'body_part' : Object.prototype.hasOwnProperty.call(value, 'bp') ? 'bp' : null;
+  const bodyPart = bodyPartKey ? value[bodyPartKey] : undefined;
+  if (bodyPartKey) {
+    const text = mcpString(bodyPart, 80);
+    if (!text || !MCP_BODY_PARTS.has(text)) return mcpError('custom exercise body part is invalid');
+    out.bp = text;
+  }
+  const equipmentKey = Object.prototype.hasOwnProperty.call(value, 'equipment') ? 'equipment' : Object.prototype.hasOwnProperty.call(value, 'eq') ? 'eq' : null;
+  const equipment = equipmentKey ? value[equipmentKey] : undefined;
+  if (equipmentKey) {
+    const text = mcpString(equipment, 80);
+    if (!text || !MCP_EQUIPMENT.has(text)) return mcpError('custom exercise equipment is invalid');
+    out.eq = text;
+  }
+  // The CustomExerciseSheet requires both fields and the picker/filter code relies on them.
+  // Updates inherit them from `base`; creates must provide valid app vocabulary explicitly.
+  if (!mcpString(out.bp, 80) || !MCP_BODY_PARTS.has(out.bp)) return mcpError('custom exercise body part is required');
+  if (!mcpString(out.eq, 80) || !MCP_EQUIPMENT.has(out.eq)) return mcpError('custom exercise equipment is required');
+  const descriptionKey = Object.prototype.hasOwnProperty.call(value, 'description') ? 'description' : Object.prototype.hasOwnProperty.call(value, 'desc') ? 'desc' : null;
+  const description = descriptionKey ? value[descriptionKey] : undefined;
+  if (descriptionKey) {
+    if (description == null) { delete out.desc; }
+    else {
+      const text = mcpString(description, 1000, { allowEmpty: true });
+      if (text == null) return mcpError('custom exercise description is invalid');
+      if (text) out.desc = text; else delete out.desc;
+    }
+  }
+  const lists = [
+    ['primary_muscles', 'primaryMuscles', 'primaries', 'primaries'],
+    ['secondary_muscles', 'secondaryMuscles', 'secondaries', 'secondaries'],
+    ['muscle_groups', 'muscleGroups', 'muscleGroups', 'muscleGroups']
+  ];
+  for (const [a, b, c, target] of lists) {
+    const present = [a, b, c].find(key => Object.prototype.hasOwnProperty.call(value, key));
+    if (!present) continue;
+    if (value[present] == null) { out[target] = []; continue; }
+    const list = mcpStringList(value[present], { maxItems: 20, maxLength: 80 });
+    if (!list || list.some(muscle => !MCP_MUSCLES.has(muscle))) return mcpError('custom exercise muscle metadata is invalid');
+    out[target] = list;
+  }
+  const primaryKey = ['primary_muscles', 'primaryMuscles', 'primaries'].find(key => Object.prototype.hasOwnProperty.call(value, key));
+  const secondaryKey = ['secondary_muscles', 'secondaryMuscles', 'secondaries'].find(key => Object.prototype.hasOwnProperty.call(value, key));
+  const primaries = Array.isArray(out.primaries) ? out.primaries : [];
+  if (Array.isArray(out.secondaries)) out.secondaries = out.secondaries.filter(muscle => !primaries.includes(muscle));
+  // Keep the legacy fields written by the native app synchronized whenever either list is
+  // explicitly edited. `sm` is an array in the app's persisted schema; an empty list is a real
+  // edit and must clear the old value rather than leave stale secondary muscles behind.
+  if (primaryKey || secondaryKey) {
+    if (primaries.length) out.tg = primaries[0]; else delete out.tg;
+    const secondaries = Array.isArray(out.secondaries) ? out.secondaries : [];
+    out.sm = [...secondaries];
+  }
+  const instructionsKey = ['instructions', 'steps', 'st'].find(key => Object.prototype.hasOwnProperty.call(value, key));
+  const instructions = instructionsKey ? value[instructionsKey] : undefined;
+  if (instructionsKey) {
+    if (instructions == null) { delete out.st; }
+    else {
+      const list = mcpStringList(instructions, { maxItems: 20, maxLength: 500 });
+      if (!list) return mcpError('custom exercise instruction steps are invalid');
+      if (list.length) out.st = list; else delete out.st;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'icon')) {
+    if (value.icon == null) { delete out.icon; }
+    else {
+      const icon = mcpString(value.icon, 64, { allowEmpty: true });
+      if (icon == null || (icon && !MCP_GLYPHS.has(icon))) return mcpError('custom exercise icon is invalid');
+      if (icon) out.icon = icon; else delete out.icon;
+    }
+  }
+  out.custom = true;
+  return out;
+}
+
+function normalizeMcpProfile(value, { id = null, base = null } = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return mcpError('equipment profile is invalid');
+  if (Object.keys(value).some(key => !MCP_PROFILE_FIELDS.has(key))) return mcpError('equipment profile contains unsupported fields');
+  const out = base ? mcpClone(base) : { id: id || `eq${crypto.randomBytes(10).toString('base64url')}`, equipment: [] };
+  if (!isSafeId(out.id)) return mcpError('equipment profile id is invalid');
+  if (value.id != null && String(value.id) !== out.id) return mcpError('equipment profile id cannot be changed');
+  if (value.name != null) {
+    const name = mcpString(value.name, 40);
+    if (!name) return mcpError('equipment profile name is invalid');
+    out.name = name;
+  }
+  if (!mcpString(out.name, 40)) return mcpError('equipment profile name is required');
+  if (value.equipment != null) {
+    const equipment = mcpStringList(value.equipment, { maxItems: 200, maxLength: 80 });
+    if (!equipment || equipment.some(item => !MCP_EQUIPMENT.has(item))) return mcpError('equipment profile equipment list is invalid');
+    out.equipment = equipment;
+  }
+  if (!Array.isArray(out.equipment)) out.equipment = [];
+  return out;
+}
+
+function normalizeMcpPlan(value, state) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return mcpError('weekly plan is invalid');
+  if (Object.keys(value).some(key => !MCP_PLAN_FIELDS.has(key))) return mcpError('weekly plan contains unsupported fields');
+  const routineIds = new Set(Array.isArray(state?.routines) ? state.routines.map(routine => String(routine?.id || '')) : []);
+  const clean = {};
+  if (value.week != null) {
+    if (!value.week || typeof value.week !== 'object' || Array.isArray(value.week)) return mcpError('weekly plan weekdays are invalid');
+    clean.week = {};
+    for (const [weekday, assignment] of Object.entries(value.week)) {
+      if (!/^[0-6]$/.test(weekday)) return mcpError('weekly plan weekday is invalid');
+      // A null, explicit rest, or empty array clears the weekday. The app represents rest by
+      // omitting the weekday key; retaining `[]` would look similar in JSON but breaks the
+      // effective-plan helpers and makes read-after-write misleading.
+      if (assignment == null || assignment === 'rest' || (Array.isArray(assignment) && assignment.length === 0)) {
+        clean.week[weekday] = null;
+        continue;
+      }
+      const ids = Array.isArray(assignment) ? assignment : [assignment];
+      if (ids.length > 8 || ids.some(id => !isSafeId(id) || !routineIds.has(String(id)))) return mcpError('weekly plan routine is invalid');
+      clean.week[weekday] = ids.map(String);
+    }
+  }
+  if (value.dayPlan != null) {
+    if (!value.dayPlan || typeof value.dayPlan !== 'object' || Array.isArray(value.dayPlan)) return mcpError('date plan is invalid');
+    clean.dayPlan = {};
+    for (const [date, assignment] of Object.entries(value.dayPlan)) {
+      if (!mcpDate(date)) return mcpError('date plan date is invalid');
+      if (assignment === 'rest') { clean.dayPlan[date] = 'rest'; continue; }
+      if (assignment == null || assignment === '') { clean.dayPlan[date] = null; continue; }
+      if (Array.isArray(assignment) || !isSafeId(assignment) || !routineIds.has(String(assignment))) return mcpError('date plan routine is invalid');
+      // Unlike a weekday, a one-off date override is deliberately scalar in the app. It can
+      // select one routine or the explicit `rest` sentinel; arrays here would be ignored by
+      // effectiveRoutineIds and create a false read-after-write result.
+      clean.dayPlan[date] = String(assignment);
+    }
+  }
+  if (value.weekStart != null) {
+    const weekday = mcpNumber(value.weekStart, { min: 0, max: 6, integer: true });
+    if (weekday == null) return mcpError('week start weekday is invalid');
+    clean.weekStart = weekday;
+  }
+  return clean;
+}
+
+function mcpMutationKey(req, body, operation) {
+  const key = String(req.headers['idempotency-key'] || body?.request_id || '').trim();
+  return key && key.length <= 200 ? `mcp-${operation}:${key}` : null;
+}
+
+async function mcpStateMutation({ req, res, grant, operation, body, apply, status = 200 }) {
+  if (!requireWritable(res) || receiptsError) return receiptsError ? storageFailure(res, receiptsError) : undefined;
+  const expected = normalizeIfMatch(req.headers['if-match']);
+  if (!expected) return json(res, 428, { error: 'If-Match precondition required' });
+  const key = mcpMutationKey(req, body, operation);
+  if (!key) return json(res, 400, { error: 'Idempotency-Key required' });
+  const hash = requestHash(canonicalValue(body));
+  return withStateLock(grant.uid, async () => {
+    let current;
+    try { current = readStateRecord(grant.uid); } catch (error) { return storageFailure(res, error); }
+    const prior = receipts.entries.find(entry => entry.uid === grant.uid && entry.key === key);
+    if (prior) {
+      if (prior.hash !== hash) return json(res, 409, { error: 'idempotency key was already used for another request' });
+      if (!prior.result || !prior.revision) return storageFailure(res, new StorageCorruptError(receiptFile, new Error('MCP receipt result is missing')));
+      return json(res, 200, prior.result, { ETag: prior.revision });
+    }
+    if (expected !== current.etag) return json(res, 412, { error: 'stale revision', revision: current.etag }, { ETag: current.etag });
+    const source = current.state || MCP_DEFAULT_STATE();
+    let next;
+    try { next = mcpClone(source); } catch (error) { return storageFailure(res, error); }
+    let result;
+    try { result = await apply(next, source); }
+    catch (error) { return storageFailure(res, error); }
+    if (!result || result.error) return json(res, result?.status || 400, { error: result?.error || 'MCP mutation was rejected' });
+    const priorTs = source._ts == null ? 0 : source._ts;
+    if (!Number.isSafeInteger(priorTs) || priorTs < 0 || priorTs >= Number.MAX_SAFE_INTEGER) return storageFailure(res, new StorageCorruptError(stateFile(grant.uid), new Error('state timestamp is invalid')));
+    const nextTs = Math.max(Date.now(), priorTs + 1);
+    if (!Number.isSafeInteger(nextTs)) return storageFailure(res, new StorageCorruptError(stateFile(grant.uid), new Error('state timestamp cannot advance')));
+    next._ts = nextTs;
+    try { next._rev = nextStateRevision(grant.uid, current.state); } catch (error) { return storageFailure(res, error); }
+    const revision = etagFor(JSON.stringify(next));
+    const payload = { ...(result.payload || {}), revision, rev: next._rev };
+    const receipt = {
+      uid: grant.uid, key, hash, stateHash: requestHash(next), revision, rev: next._rev,
+      tsValue: next._ts, ts: Date.now(), result: payload
+    };
+    try {
+      const text = JSON.stringify(next);
+      durableAtomicWrite(stateTxnFile(grant.uid), JSON.stringify({ state: next, receipt }), 0o600);
+      durableStateWrite(stateFile(grant.uid), text);
+      receipts.entries.push(receipt);
+      saveReceipts();
+      durableUnlink(stateTxnFile(grant.uid));
+      return json(res, result.status || status, payload, { ETag: revision });
+    } catch (error) { return storageFailure(res, error); }
+  });
 }
 const uploadDir = uid => path.join(DATA, 'uploads', uid);
 const assetFile = (uid, id) => path.join(uploadDir(uid), id);
@@ -1462,7 +1891,18 @@ const routes = {
   // the app it was before the feature existed.
   'GET /api/config': async (req, res) => {
     const coach = coachConfig.publicConfig();
-    json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, ...(coach ? { coach } : {}) });
+    json(res, 200, {
+      invite_only: INVITE_ONLY,
+      allow_guest: ALLOW_GUEST,
+      mcp: {
+        enabled: MCP_ENABLED,
+        url: MCP_PUBLIC_URL,
+        proposals_enabled: PROPOSALS_ENABLED,
+        images_enabled: ASSETS_ENABLED,
+        scopes: [...GRANT_SCOPES]
+      },
+      ...(coach ? { coach } : {})
+    });
   },
 
   'GET /api/me': async (req, res) => {
@@ -1573,6 +2013,7 @@ const routes = {
     if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
     const query = new URL(req.url, 'http://x').searchParams;
     const scope = query.get('scope');
+    if (!scope || !GRANT_SCOPES.has(scope)) return json(res, 400, { error: 'invalid scope' });
     const grant = requireGrant(req, res, scope);
     if (!grant) return;
     const requestedUid = query.get('uid');
@@ -1587,7 +2028,129 @@ const routes = {
     if (scope === 'workout:read') state.workouts = S.workouts || [];
     if (scope === 'bodyweight:read') Object.assign(state, { bodyweight: S.bodyweight || [], targetW: S.targetW || null });
     if (scope === 'progress:read') Object.assign(state, { workouts: S.workouts || [], routines: S.routines || [], customEx: S.customEx || [], exWeights: S.exWeights || {} });
+    if (scope === 'equipment:read') Object.assign(state, { equipProfiles: S.equipProfiles || [], activeEquipId: S.activeEquipId || null, equipFilterOn: S.equipFilterOn === true });
     json(res, 200, { state, revision: record.etag });
+  },
+
+  // A write-only grant can obtain the current strong validator without receiving a read
+  // snapshot. The gateway uses this endpoint for append-only creates; edit callers must send the
+  // revision they actually read so a phone edit between read and write becomes a visible 412.
+  'GET /api/mcp/revision': async (req, res) => {
+    if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+    const scope = new URL(req.url, 'http://x').searchParams.get('scope');
+    if (!scope || !GRANT_SCOPES.has(scope)) return json(res, 400, { error: 'invalid scope' });
+    const grant = requireGrant(req, res, scope);
+    if (!grant) return;
+    let record;
+    try { record = readStateRecord(grant.uid); } catch (error) { return storageFailure(res, error); }
+    json(res, 200, { revision: record.etag, rev: storedStateRevision(grant.uid, record.state) }, { ETag: record.etag });
+  },
+
+  'POST /api/mcp/routines': async (req, res) => {
+    if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+    const grant = requireGrant(req, res, 'routine:write');
+    if (!grant) return;
+    let body;
+    try { body = await readBody(req, 512 * 1024); } catch { return json(res, 400, { error: 'bad json or routine too large' }); }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'routine is required' });
+    const input = body.routine && typeof body.routine === 'object' ? body.routine : Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'request_id'));
+    return mcpStateMutation({
+      req, res, grant, operation: 'routine-create', body,
+      apply: (next, source) => {
+        if (!Array.isArray(source.routines)) return { error: 'routines storage is invalid', status: 503 };
+        let id;
+        do { id = crypto.randomBytes(12).toString('base64url'); } while (source.routines.some(routine => routine?.id === id));
+        const routine = normalizeMcpRoutine(input, source, { id });
+        if (routine?.error) return routine;
+        next.routines = [...source.routines, routine];
+        return { status: 201, payload: { routine } };
+      }
+    });
+  },
+
+  'POST /api/mcp/exercises': async (req, res) => {
+    if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+    const grant = requireGrant(req, res, 'exercise:write');
+    if (!grant) return;
+    let body;
+    try { body = await readBody(req, 256 * 1024); } catch { return json(res, 400, { error: 'bad json or exercise too large' }); }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'custom exercise is required' });
+    const input = body.exercise && typeof body.exercise === 'object' ? body.exercise : Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'request_id'));
+    return mcpStateMutation({
+      req, res, grant, operation: 'exercise-create', body,
+      apply: (next, source) => {
+        if (!Array.isArray(source.customEx)) return { error: 'custom exercise storage is invalid', status: 503 };
+        const name = String(input.name ?? input.n ?? '').trim().toLowerCase();
+        if (name && [...source.customEx, ...EXDB].some(ex => String(ex?.n || '').trim().toLowerCase() === name)) return { error: 'an exercise with this name already exists', status: 409 };
+        let id;
+        do { id = `c${crypto.randomBytes(12).toString('base64url')}`; } while (source.customEx.some(ex => ex?.id === id) || EXDB.some(ex => ex.id === id));
+        const exercise = normalizeMcpExercise(input, { id });
+        if (exercise?.error) return exercise;
+        next.customEx = [...source.customEx, exercise];
+        return { status: 201, payload: { exercise } };
+      }
+    });
+  },
+
+  'POST /api/mcp/equipment': async (req, res) => {
+    if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+    const grant = requireGrant(req, res, 'equipment:write');
+    if (!grant) return;
+    let body;
+    try { body = await readBody(req, 128 * 1024); } catch { return json(res, 400, { error: 'bad json or equipment profile too large' }); }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'equipment profile is required' });
+    const input = body.profile && typeof body.profile === 'object' ? body.profile : Object.fromEntries(Object.entries(body).filter(([key]) => !['request_id', 'active'].includes(key)));
+    return mcpStateMutation({
+      req, res, grant, operation: 'equipment-create', body,
+      apply: (next, source) => {
+        if (source.equipProfiles != null && !Array.isArray(source.equipProfiles)) return { error: 'equipment profile storage is invalid', status: 503 };
+        const profiles = Array.isArray(source.equipProfiles) ? source.equipProfiles : [];
+        let id;
+        do { id = `eq${crypto.randomBytes(10).toString('base64url')}`; } while (profiles.some(profile => profile?.id === id));
+        const profile = normalizeMcpProfile(input, { id });
+        if (profile?.error) return profile;
+        next.equipProfiles = [...profiles, profile];
+        if (body.active === true) { next.activeEquipId = profile.id; next.equipFilterOn = true; }
+        return { status: 201, payload: { profile, active: body.active === true } };
+      }
+    });
+  },
+
+  'PUT /api/mcp/plan': async (req, res) => {
+    if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+    const grant = requireGrant(req, res, 'plan:write');
+    if (!grant) return;
+    let body;
+    try { body = await readBody(req, 256 * 1024); } catch { return json(res, 400, { error: 'bad json or weekly plan too large' }); }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'weekly plan is required' });
+    const input = body.plan && typeof body.plan === 'object' ? body.plan : Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'request_id'));
+    return mcpStateMutation({
+      req, res, grant, operation: 'plan-update', body,
+      apply: (next, source) => {
+        if (source.routines != null && !Array.isArray(source.routines)) return { error: 'routines storage is invalid', status: 503 };
+        const clean = normalizeMcpPlan(input, source);
+        if (clean?.error) return clean;
+        if (clean.week) {
+          next.week = { ...(source.week || {}) };
+          for (const [weekday, assignment] of Object.entries(clean.week)) {
+            if (assignment == null) delete next.week[weekday]; else next.week[weekday] = assignment;
+          }
+        }
+        if (clean.dayPlan) {
+          next.dayPlan = { ...(source.dayPlan || {}) };
+          for (const [date, assignment] of Object.entries(clean.dayPlan)) {
+            if (assignment == null) delete next.dayPlan[date]; else next.dayPlan[date] = assignment;
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(clean, 'weekStart')) next.weekStart = clean.weekStart;
+        return {
+          payload: {
+            week: next.week || {}, dayPlan: next.dayPlan || {},
+            ...(Number.isInteger(next.weekStart) ? { weekStart: next.weekStart } : {})
+          }
+        };
+      }
+    });
   },
 
   // The signed-in app reviews proposals without needing to expose a bearer grant to the browser.
@@ -2284,6 +2847,158 @@ const routes = {
   ...coachRoutes({ json, readBody, readSession, requireAdmin })
 };
 
+async function updateMcpRoutine(req, res, id) {
+  if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+  const grant = requireGrant(req, res, 'routine:write');
+  if (!grant) return;
+  if (!isSafeId(id)) return json(res, 404, { error: 'no such routine' });
+  let body;
+  try { body = await readBody(req, 512 * 1024); } catch { return json(res, 400, { error: 'bad json or routine too large' }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'routine changes are required' });
+  const input = body.changes && typeof body.changes === 'object'
+    ? body.changes
+    : (body.routine && typeof body.routine === 'object' ? body.routine : Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'request_id')));
+  return mcpStateMutation({
+    req, res, grant, operation: `routine-update:${id}`, body,
+    apply: (next, source) => {
+      if (!Array.isArray(source.routines)) return { error: 'routines storage is invalid', status: 503 };
+      const current = source.routines.find(routine => routine?.id === id);
+      if (!current) return { error: 'no such routine', status: 404 };
+      const routine = normalizeMcpRoutine(input, source, { id, base: current });
+      if (routine?.error) return routine;
+      next.routines = source.routines.map(candidate => candidate?.id === id ? routine : candidate);
+      return { payload: { routine } };
+    }
+  });
+}
+
+async function updateMcpExercise(req, res, id) {
+  if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+  const grant = requireGrant(req, res, 'exercise:write');
+  if (!grant) return;
+  if (!isSafeId(id)) return json(res, 404, { error: 'no such custom exercise' });
+  let body;
+  try { body = await readBody(req, 256 * 1024); } catch { return json(res, 400, { error: 'bad json or exercise too large' }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'custom exercise changes are required' });
+  const input = body.changes && typeof body.changes === 'object'
+    ? body.changes
+    : (body.exercise && typeof body.exercise === 'object' ? body.exercise : Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'request_id')));
+  return mcpStateMutation({
+    req, res, grant, operation: `exercise-update:${id}`, body,
+    apply: (next, source) => {
+      if (!Array.isArray(source.customEx)) return { error: 'custom exercise storage is invalid', status: 503 };
+      const current = source.customEx.find(exercise => exercise?.id === id);
+      if (!current) return { error: 'no such custom exercise', status: 404 };
+      const candidateName = input.name ?? input.n;
+      if (candidateName != null) {
+        const name = String(candidateName).trim().toLowerCase();
+        if (name && [...source.customEx, ...EXDB].some(ex => ex.id !== id && String(ex?.n || '').trim().toLowerCase() === name)) return { error: 'an exercise with this name already exists', status: 409 };
+      }
+      const exercise = normalizeMcpExercise(input, { id, base: current });
+      if (exercise?.error) return exercise;
+      next.customEx = source.customEx.map(candidate => candidate?.id === id ? exercise : candidate);
+      return { payload: { exercise } };
+    }
+  });
+}
+
+async function updateMcpEquipment(req, res, id) {
+  if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });
+  const grant = requireGrant(req, res, 'equipment:write');
+  if (!grant) return;
+  if (!isSafeId(id)) return json(res, 404, { error: 'no such equipment profile' });
+  let body;
+  try { body = await readBody(req, 128 * 1024); } catch { return json(res, 400, { error: 'bad json or equipment profile too large' }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'equipment profile changes are required' });
+  const input = body.changes && typeof body.changes === 'object'
+    ? body.changes
+    : (body.profile && typeof body.profile === 'object' ? body.profile : Object.fromEntries(Object.entries(body).filter(([key]) => !['request_id', 'active'].includes(key))));
+  return mcpStateMutation({
+    req, res, grant, operation: `equipment-update:${id}`, body,
+    apply: (next, source) => {
+      if (source.equipProfiles != null && !Array.isArray(source.equipProfiles)) return { error: 'equipment profile storage is invalid', status: 503 };
+      const current = (source.equipProfiles || []).find(profile => profile?.id === id);
+      if (!current) return { error: 'no such equipment profile', status: 404 };
+      const profile = normalizeMcpProfile(input, { id, base: current });
+      if (profile?.error) return profile;
+      next.equipProfiles = (source.equipProfiles || []).map(candidate => candidate?.id === id ? profile : candidate);
+      if (body.active === true) { next.activeEquipId = id; next.equipFilterOn = true; }
+      if (body.active === false && source.activeEquipId === id) { next.activeEquipId = null; next.equipFilterOn = false; }
+      return { payload: { profile, active: next.activeEquipId === id } };
+    }
+  });
+}
+
+async function uploadMcpExerciseImage(req, res, id) {
+  if (!MCP_ENABLED || !ASSETS_ENABLED) return json(res, 404, { error: 'feature disabled' });
+  const grant = requireGrant(req, res, 'image:write');
+  if (!grant) return;
+  if (!isSafeId(id)) return json(res, 404, { error: 'no such custom exercise' });
+  if (!requireWritable(res) || receiptsError) return receiptsError ? storageFailure(res, receiptsError) : undefined;
+  const expected = normalizeIfMatch(req.headers['if-match']);
+  if (!expected) return json(res, 428, { error: 'If-Match precondition required' });
+  let body;
+  try { body = await readBody(req, 14 * 1024 * 1024); } catch { return json(res, 400, { error: 'bad json or image too large' }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'image data is required' });
+  const key = mcpMutationKey(req, body, `image:${id}`);
+  if (!key) return json(res, 400, { error: 'Idempotency-Key required' });
+  const hash = requestHash(canonicalValue(body));
+  return withAssetLock(grant.uid, () => withStateLock(grant.uid, async () => {
+    let current;
+    try { current = readStateRecord(grant.uid); } catch (error) { return storageFailure(res, error); }
+    const prior = receipts.entries.find(entry => entry.uid === grant.uid && entry.key === key);
+    if (prior) {
+      if (prior.hash !== hash) return json(res, 409, { error: 'idempotency key was already used for another request' });
+      if (!prior.result || !prior.revision) return storageFailure(res, new StorageCorruptError(receiptFile, new Error('MCP image receipt result is missing')));
+      return json(res, 200, prior.result, { ETag: prior.revision });
+    }
+    if (expected !== current.etag) return json(res, 412, { error: 'stale revision', revision: current.etag }, { ETag: current.etag });
+    const source = current.state || MCP_DEFAULT_STATE();
+    if (!Array.isArray(source.customEx)) return storageFailure(res, new StorageCorruptError(stateFile(grant.uid), new Error('customEx is not an array')));
+    const exercise = source.customEx.find(candidate => candidate?.id === id);
+    if (!exercise) return json(res, 404, { error: 'no such custom exercise' });
+    let image;
+    let normalized;
+    try {
+      image = imageBytes(body);
+      normalized = await withImageProcessing(() => normalizeImage(image));
+    } catch (error) {
+      const status = error?.code === 'IMAGE_BUSY' ? 429 : error?.code === 'IMAGE_TYPE' ? 415 : error?.code === 'IMAGE_SIZE' || error?.code === 'IMAGE_OUTPUT' || error?.code === 'IMAGE_DIMENSIONS' ? 413 : 400;
+      return json(res, status, { error: error.message || 'image could not be processed', code: error.code || 'IMAGE_INVALID' });
+    }
+    let usage;
+    try { usage = assetUsage(grant.uid); } catch (error) { return storageFailure(res, error); }
+    if (usage + normalized.bytes.length > IMAGE_QUOTA_BYTES) return json(res, 413, { error: 'image quota exceeded', code: 'IMAGE_QUOTA', quota_bytes: IMAGE_QUOTA_BYTES, used_bytes: usage });
+    let assetId;
+    do { assetId = crypto.randomBytes(18).toString('base64url'); } while (fs.existsSync(assetFile(grant.uid, assetId)));
+    const media = {
+      id: assetId, mime: normalized.mime, size: normalized.bytes.length,
+      sha256: crypto.createHash('sha256').update(normalized.bytes).digest('hex'),
+      width: normalized.width, height: normalized.height
+    };
+    try { durableAtomicWrite(assetFile(grant.uid, assetId), normalized.bytes, 0o600); }
+    catch (error) { return storageFailure(res, error); }
+    const next = mcpClone(source);
+    next.customEx = next.customEx.map(candidate => candidate?.id === id ? { ...candidate, media } : candidate);
+    const priorTs = source._ts == null ? 0 : source._ts;
+    if (!Number.isSafeInteger(priorTs) || priorTs < 0 || priorTs >= Number.MAX_SAFE_INTEGER) return storageFailure(res, new StorageCorruptError(stateFile(grant.uid), new Error('state timestamp is invalid')));
+    const nextTs = Math.max(Date.now(), priorTs + 1);
+    try { next._ts = nextTs; next._rev = nextStateRevision(grant.uid, current.state); } catch (error) { return storageFailure(res, error); }
+    const revision = etagFor(JSON.stringify(next));
+    const result = { exercise: next.customEx.find(candidate => candidate?.id === id), asset: media, revision, rev: next._rev };
+    const receipt = { uid: grant.uid, key, hash, stateHash: requestHash(next), revision, rev: next._rev, tsValue: next._ts, ts: Date.now(), result };
+    try {
+      const text = JSON.stringify(next);
+      durableAtomicWrite(stateTxnFile(grant.uid), JSON.stringify({ state: next, receipt }), 0o600);
+      durableStateWrite(stateFile(grant.uid), text);
+      receipts.entries.push(receipt);
+      saveReceipts();
+      durableUnlink(stateTxnFile(grant.uid));
+      return json(res, 201, result, { ETag: revision });
+    } catch (error) { return storageFailure(res, error); }
+  }));
+}
+
 async function serveAsset(req, res, id) {
   if (!isSafeId(id)) return json(res, 404, { error: 'not found' });
   const user = readSession(req);
@@ -2399,6 +3114,14 @@ http.createServer(async (req, res) => {
     }
     return client ? json(res, 200, oauthClientView(client)) : json(res, 404, { error: 'unknown client' });
   }
+  const mcpExerciseImageMatch = /^\/api\/mcp\/exercises\/([A-Za-z0-9_-]+)\/image$/.exec(url.pathname);
+  if (mcpExerciseImageMatch && req.method === 'POST') return uploadMcpExerciseImage(req, res, mcpExerciseImageMatch[1]);
+  const mcpRoutineMatch = /^\/api\/mcp\/routines\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+  if (mcpRoutineMatch && req.method === 'PUT') return updateMcpRoutine(req, res, mcpRoutineMatch[1]);
+  const mcpExerciseMatch = /^\/api\/mcp\/exercises\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+  if (mcpExerciseMatch && req.method === 'PUT') return updateMcpExercise(req, res, mcpExerciseMatch[1]);
+  const mcpEquipmentMatch = /^\/api\/mcp\/equipment\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+  if (mcpEquipmentMatch && req.method === 'PUT') return updateMcpEquipment(req, res, mcpEquipmentMatch[1]);
   const proposalMatch = /^\/api\/mcp\/proposals\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
   if (proposalMatch && req.method === 'GET') return getProposal(req, res, proposalMatch[1]);
   if (proposalMatch && req.method === 'POST') {

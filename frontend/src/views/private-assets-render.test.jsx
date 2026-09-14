@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Library from './Library.jsx'
 import RoutineEdit from './RoutineEdit.jsx'
 import Workout from './Workout.jsx'
-import { exerciseDetailSheet, exercisePicker } from '../sheets.jsx'
+import { customExSheet, exerciseDetailSheet, exercisePicker } from '../sheets.jsx'
+import { Thumb } from '../components/Media.jsx'
 import Modals from '../components/Modals.jsx'
 import { DEF, useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -29,9 +30,19 @@ const custom = {
   media: { id: 'private-render-asset', mime: 'image/png', size: 128, sha256: 'asset-sha256' }
 }
 
+const iconFallback = {
+  id: 'icon-fallback-exercise', n: 'Icon fallback exercise', bp: 'chest', tg: 'chest', eq: 'custom', custom: true,
+  icon: 'stretch'
+}
+
+const iconEdited = {
+  id: 'icon-edited-exercise', n: 'Icon edited exercise', bp: 'chest', tg: 'chest', eq: 'custom', custom: true,
+  icon: 'stretch', media: custom.media
+}
+
 function stateFixture() {
   const S = JSON.parse(JSON.stringify(DEF))
-  S.customEx = [custom]
+  S.customEx = [custom, iconFallback, iconEdited]
   S.routines = [{ id: 'private-routine', name: 'Private routine', ex: [{ id: custom.id, sets: 1, reps: 5, weight: 1 }] }]
   S.workouts = []
   S.active = {
@@ -107,5 +118,35 @@ describe('private custom image rendering', () => {
     process.stdout.write('gate4_private_asset_views_workout=true\n')
     process.stdout.write('gate4_private_asset_views_detail=true\n')
     process.stdout.write('gate4_private_asset_views_all=true\n')
+  })
+
+  it('renders a validated custom icon and saves icon edits without replacing the private photo', async () => {
+    mount(<Thumb ex={iconFallback} />)
+    expect(container.querySelector('.thumb-x circle')).toBeTruthy()
+    unmount()
+
+    customExSheet(iconEdited)
+    mount(<Modals />)
+    await settle()
+    const pickerButton = container.querySelector('button[aria-label="Pick an icon"]')
+    expect(pickerButton).toBeTruthy()
+
+    act(() => pickerButton.click())
+    await settle()
+    const bolt = container.querySelector('button[aria-label="bolt"]')
+    expect(bolt).toBeTruthy()
+    act(() => bolt.click())
+    await settle()
+
+    const save = [...container.querySelectorAll('button')].find(button => button.textContent.trim() === 'Save')
+    expect(save).toBeTruthy()
+    act(() => save.click())
+    await settle()
+
+    const saved = useStore.getState().S.customEx.find(ex => ex.id === iconEdited.id)
+    expect(saved.icon).toBe('bolt')
+    expect(saved.media).toEqual(custom.media)
+    process.stdout.write('custom_exercise_icon_thumb=true\n')
+    process.stdout.write('custom_exercise_icon_edit_preserves_photo=true\n')
   })
 })

@@ -528,57 +528,149 @@ function effortHelpSheet() {
   </>)
 }
 
+const MCP_SCOPE_OPTIONS = [
+  ['exercise:read', 'Exercise catalogue'], ['routine:read', 'Routines and week plan'],
+  ['workout:read', 'Workout history'], ['bodyweight:read', 'Body-weight log'],
+  ['progress:read', 'Progress and muscle stats'], ['workout:write', 'Log workouts'],
+  ['routine:propose', 'Routine proposals'], ['routine:write', 'Create and edit routines'],
+  ['exercise:write', 'Create and edit exercises'], ['image:write', 'Exercise images'],
+  ['equipment:read', 'Equipment profiles'], ['equipment:write', 'Edit equipment profiles'],
+  ['plan:write', 'Plan the week'],
+]
+const MCP_DEFAULT_SCOPES = ['exercise:read', 'routine:read', 'workout:read', 'bodyweight:read', 'progress:read', 'routine:propose']
+
 function McpCard({ toast }) {
+  const [config, setConfig] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    let live = true
+    api('/api/config').then(c => { if (live) setConfig(c.mcp || {}) })
+      .catch(e => { if (live) setError(e) })
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [])
+
+  if (loading) return <Section title={t('Remote MCP access')}><div className="muted small" aria-live="polite">{t('Loading remote MCP access…')}</div></Section>
+  if (error) return <Section title={t('Remote MCP access')}><div className="dim small" role="alert">{t('Could not load remote MCP access.')}{error.message ? ' ' + error.message : ''}</div></Section>
+  if (!config?.enabled) return <Section title={t('Remote MCP access')}><div className="dim small" role="status">{t('MCP access is disabled on this server.')}</div></Section>
+  return <McpGrantCard config={config} toast={toast} />
+}
+
+function McpGrantCard({ config, toast }) {
   const [grants, setGrants] = useState([])
+  const [grantsLoading, setGrantsLoading] = useState(true)
+  const [grantsError, setGrantsError] = useState(null)
   const [proposals, setProposals] = useState([])
   const [proposalRevision, setProposalRevision] = useState('"0"')
   const [name, setName] = useState('')
   const [token, setToken] = useState(null)
-  const [scopes, setScopes] = useState(['exercise:read', 'routine:read', 'workout:read', 'bodyweight:read', 'progress:read', 'routine:propose'])
-  const available = [
-    ['exercise:read', t('Exercise catalogue')], ['routine:read', t('Routines and week plan')],
-    ['workout:read', t('Workout history')], ['bodyweight:read', t('Body-weight log')],
-    ['progress:read', t('Progress and muscle stats')], ['routine:propose', t('Routine proposals')]
-  ]
-  const load = () => Promise.all([api('/api/mcp/grants'), api('/api/mcp/proposals')]).then(([g, p]) => {
-    setGrants(g.grants || []); setProposals(p.proposals || []); setProposalRevision(p.revision || '"0"')
-  }).catch(() => {})
-  useEffect(() => { load() }, [])
+  const [creating, setCreating] = useState(false)
+  const creatingRef = useRef(false)
+  const [revoking, setRevoking] = useState(null)
+  const revokingRef = useRef(false)
+  const [urlCopyError, setUrlCopyError] = useState(false)
+  const [tokenCopyError, setTokenCopyError] = useState(false)
+  const [proposalsLoading, setProposalsLoading] = useState(false)
+  const [proposalsError, setProposalsError] = useState(null)
+  const available = MCP_SCOPE_OPTIONS.filter(([scope]) =>
+    (!Array.isArray(config.scopes) || !config.scopes.length || config.scopes.includes(scope)) &&
+    (scope !== 'routine:propose' || config.proposals_enabled === true) &&
+    (scope !== 'image:write' || config.images_enabled === true)
+  )
+  const [scopes, setScopes] = useState(() => MCP_DEFAULT_SCOPES.filter(scope => available.some(([value]) => value === scope)))
+
+  const loadGrants = async () => {
+    setGrantsLoading(true); setGrantsError(null)
+    try { const g = await api('/api/mcp/grants'); setGrants(g.grants || []) }
+    catch (e) { setGrantsError(e) }
+    finally { setGrantsLoading(false) }
+  }
+  const loadProposals = async () => {
+    if (!config.proposals_enabled) return
+    setProposalsLoading(true); setProposalsError(null)
+    try {
+      const p = await api('/api/mcp/proposals')
+      setProposals(p.proposals || []); setProposalRevision(p.revision || '"0"')
+    } catch (e) { setProposalsError(e) }
+    finally { setProposalsLoading(false) }
+  }
+  useEffect(() => { loadGrants(); loadProposals() }, [config.proposals_enabled])
+
+  const copy = async (value, failed) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(value)
+      failed(false)
+      return true
+    } catch {
+      failed(true)
+      return false
+    }
+  }
+  const copyUrl = async () => {
+    if (await copy(config.url, setUrlCopyError)) toast(t('MCP URL copied'))
+    else toast(t('Copy failed — select the URL manually'))
+  }
+  const copyToken = async () => {
+    if (await copy(token, setTokenCopyError)) toast(t('MCP token copied'))
+    else toast(t('Could not copy the MCP token'))
+  }
   const create = async () => {
+    if (creatingRef.current) return
     if (!scopes.length) { toast(t('Choose at least one permission')); return }
+    creatingRef.current = true; setCreating(true)
     try {
       const r = await api('/api/mcp/grants', { method: 'POST', body: JSON.stringify({ name: name.trim() || t('MCP client'), scopes }) })
-      setToken(r.token); setName(''); load(); toast(t('Grant created — copy the token now'))
+      setToken(r.token); setTokenCopyError(false); setName(''); await loadGrants(); toast(t('Grant created — copy the token now'))
     } catch (e) { toast(e.message || t('Could not create grant')) }
+    finally { creatingRef.current = false; setCreating(false) }
   }
   const revoke = async id => {
-    try { await api('/api/mcp/grants/revoke', { method: 'POST', body: JSON.stringify({ id }) }); load(); toast(t('Grant revoked')) }
+    if (revokingRef.current) return
+    revokingRef.current = true; setRevoking(id)
+    try { await api('/api/mcp/grants/revoke', { method: 'POST', body: JSON.stringify({ id }) }); await loadGrants(); toast(t('Grant revoked')) }
     catch (e) { toast(e.message || t('Could not revoke grant')) }
+    finally { revokingRef.current = false; setRevoking(null) }
   }
   const approve = async proposal => {
     try {
       const latest = await api('/api/mcp/proposals')
       await api('/api/mcp/proposals/' + encodeURIComponent(proposal.id), { method: 'POST', headers: { 'If-Match': latest.revision || proposalRevision }, body: '{}' })
-      load(); toast(t('Routine proposal approved'))
+      await loadProposals(); toast(t('Routine proposal approved'))
     } catch (e) { toast(e.status === 412 ? t('Proposal changed — review it again') : e.message || t('Could not approve proposal')) }
   }
   return <Section title={t('Remote MCP access')} footer={t('Each client gets its own expiring, revocable permissions. Tokens are shown once; a hosted model receives only the scopes you select.') }>
+    <div className="card" style={{ marginBottom: 12 }}>
+      <label className="muted small" htmlFor="mcp-url">{t('MCP server URL')}</label>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+        <input id="mcp-url" className="field" readOnly value={config.url || ''} onFocus={e => e.target.select()} aria-label={t('MCP server URL')} style={{ flex: 1, minWidth: 0 }} />
+        <Button size="sm" icon="clipboard" onClick={copyUrl}>{t('Copy URL')}</Button>
+      </div>
+      {urlCopyError && <div className="dim small" role="alert" style={{ marginTop: 6 }}>{t('Copy failed — select the URL manually')}</div>}
+    </div>
     <TextField placeholder={t('Client name')} value={name} onChange={e => setName(e.target.value)} maxLength={80} />
     <div className="chips" style={{ margin: '10px 0' }}>
-      {available.map(([value, label]) => <button key={value} className={'chip nocap' + (scopes.includes(value) ? ' on' : '')} onClick={() => setScopes(s => s.includes(value) ? s.filter(x => x !== value) : [...s, value])}>{label}</button>)}
+      {available.map(([value, label]) => <button key={value} type="button" aria-pressed={scopes.includes(value)} className={'chip nocap' + (scopes.includes(value) ? ' on' : '')} onClick={() => setScopes(s => s.includes(value) ? s.filter(x => x !== value) : [...s, value])}>{t(label)}</button>)}
     </div>
-    <Button icon="key" variant="primary" onClick={create}>{t('Create grant')}</Button>
-    {token && <div className="card small" style={{ marginTop: 10, wordBreak: 'break-all' }}><b>{t('Copy this token now')}</b><br /><code>{token}</code></div>}
+    <Button icon="key" variant="primary" onClick={create} disabled={creating}>{t('Create grant')}</Button>
+    {token && <div className="card small" role="status" aria-live="polite" style={{ marginTop: 10, wordBreak: 'break-all' }}><b>{t('Copy this token now')}</b><br /><code>{token}</code><div style={{ marginTop: 8 }}><Button size="sm" icon="clipboard" onClick={copyToken}>{t('Copy token')}</Button></div>{tokenCopyError && <div className="dim small" role="alert" style={{ marginTop: 6 }}>{t('Could not copy the MCP token')}</div>}</div>}
+    {grantsLoading && <div className="muted small" aria-live="polite" style={{ marginTop: 10 }}>{t('Loading grants…')}</div>}
+    {grantsError && <div className="dim small" role="alert" style={{ marginTop: 10 }}>{t('Could not load MCP grants.')}{grantsError.message ? ' ' + grantsError.message : ''}</div>}
     {grants.map(g => <Row key={g.id} icon="link" iconTint="var(--blue)" title={g.name} subtitle={g.scopes.join(', ')}>
-      <Button size="sm" variant="danger" onClick={() => revoke(g.id)}>{t('Revoke')}</Button>
+      <Button size="sm" variant="danger" disabled={!!revoking} onClick={() => revoke(g.id)}>{t('Revoke')}</Button>
     </Row>)}
-    {proposals.map(p => {
-      const exercises = (p.routine?.ex || []).slice(0, 8).map(ex => `${exOr(ex.id).n} × ${ex.sets}`).join(', ')
-      const status = p.status === 'approved' ? t('Approved') : t('Pending review')
-      return <Row key={p.id} icon="clipboard" iconTint="var(--indigo)" title={p.routine?.name || t('Routine proposal')} subtitle={`${status}${exercises ? ' · ' + exercises : ''}`}>
-      {p.status === 'pending' && <Button size="sm" variant="primary" onClick={() => approve(p)}>{t('Approve')}</Button>}
-      </Row>
-    })}
+    {config.proposals_enabled ? <>
+      {proposalsLoading && <div className="muted small" aria-live="polite" style={{ marginTop: 10 }}>{t('Loading routine proposals…')}</div>}
+      {proposalsError && <div className="dim small" role="alert" style={{ marginTop: 10 }}>{t('Could not load routine proposals.')}{proposalsError.message ? ' ' + proposalsError.message : ''}</div>}
+      {proposals.map(p => {
+        const exercises = (p.routine?.ex || []).slice(0, 8).map(ex => `${exOr(ex.id).n} × ${ex.sets}`).join(', ')
+        const status = p.status === 'approved' ? t('Approved') : t('Pending review')
+        return <Row key={p.id} icon="clipboard" iconTint="var(--indigo)" title={p.routine?.name || t('Routine proposal')} subtitle={`${status}${exercises ? ' · ' + exercises : ''}`}>
+        {p.status === 'pending' && <Button size="sm" variant="primary" onClick={() => approve(p)}>{t('Approve')}</Button>}
+        </Row>
+      })}
+    </> : <div className="dim small" style={{ marginTop: 10 }}>{t('Routine proposals are disabled on this server.')}</div>}
   </Section>
 }
 

@@ -27,7 +27,8 @@ import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { exerciseHistory } from './lib/exercise-history.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS, weightIncrement } from './lib/progression.js'
 import { normalizeRepRange } from './lib/rep-range.js'
-import { MOBILE, shareExport, printHtml } from './lib/mobile.js'
+import { MOBILE, shareExport, printHtml, shareText, copyText } from './lib/mobile.js'
+import { sessionShareText } from './lib/session-share.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { assetObjectUrl, uploadAsset } from './lib/api.js'
@@ -2122,6 +2123,12 @@ export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComple
 
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
+  const shareTextValue = sessionShareText(st, w, prs, e1prs)
+  const canShare = MOBILE || (typeof navigator !== 'undefined' && typeof navigator.share === 'function')
+  const share = () => shareText(t('Workout complete!'), shareTextValue).catch(error => {
+    if (error?.name !== 'AbortError') toast(t('Could not share workout'))
+  })
+  const copy = () => copyText(shareTextValue).then(() => toast(t('Workout copied'))).catch(() => toast(t('Could not copy workout')))
   return <div style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
@@ -2138,6 +2145,11 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <BodyMap load={loadOfWorkouts([w])} body={st.body} />
     <div style={{ height: 14 }} />
+    <div className="row" style={{ gap: 8 }}>
+      {canShare && <Button variant="ghost" icon="upload" onClick={share} style={{ flex: 1 }}>{t('Share')}</Button>}
+      <Button variant="ghost" icon="clipboard" onClick={copy} style={{ flex: 1 }}>{t('Copy')}</Button>
+    </div>
+    <div style={{ height: 8 }} />
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>
 }

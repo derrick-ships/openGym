@@ -187,6 +187,29 @@ export async function shareExport(json, filename) {
   await Share.share({ title: filename, url: w.uri })
 }
 
+export async function shareText(title, text) {
+  if (!MOBILE && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    return navigator.share({ title, text })
+  }
+  const { Share } = await import('@capacitor/share')
+  return Share.share({ title, text })
+}
+
+export async function copyText(text) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) return navigator.clipboard.writeText(text)
+  if (typeof document === 'undefined') throw new Error('clipboard unavailable')
+  const input = document.createElement('textarea')
+  input.value = text
+  input.setAttribute('readonly', '')
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  document.body.appendChild(input)
+  input.select()
+  const copied = document.execCommand('copy')
+  input.remove()
+  if (!copied) throw new Error('clipboard unavailable')
+}
+
 // Hand a self-contained HTML document (lib/plan-share.js planPrintHTML) to the OS print flow.
 // Android routes it through the system PrintManager — "Save as PDF", "Save to Drive", a real
 // printer; iOS through the print sheet — "Save to Files" (as PDF), share, print. Either way the

@@ -139,6 +139,12 @@ async function solidImage() {
     .png({ compressionLevel: 9 }).toBuffer()
 }
 
+async function animatedGif() {
+  const frameA = await sharp({ create: { width: 32, height: 32, channels: 3, background: { r: 220, g: 20, b: 40 } } }).png().toBuffer()
+  const frameB = await sharp({ create: { width: 32, height: 32, channels: 3, background: { r: 20, g: 80, b: 220 } } }).png().toBuffer()
+  return sharp([frameA, frameB], { join: { animated: true } }).gif({ loop: 0, delay: [100, 100] }).toBuffer()
+}
+
 async function largeImage() {
   // Random RGB pixels prevent PNG compression from making a deceptively tiny fixture. The raw
   // pixel payload is intentionally above 1.5 MiB, while the normalized server output remains
@@ -613,6 +619,35 @@ async function main() {
     const imageReadAfter = mcpPayload(await local.client.callTool({ name: 'get_exercise', arguments: { exercise_id: exerciseId } }), 'exercise read after image')
     assert.equal(imageReadAfter.has_private_image, true)
     assert.equal(imageReadAfter.media, undefined, 'MCP exercise read exposed private media details')
+
+    const gifInput = await animatedGif()
+    const gifMetadata = await sharp(gifInput, { animated: true }).metadata()
+    assert.equal(Number(gifMetadata.pages), 2)
+    assert.equal(Number(gifMetadata.pageHeight), 32)
+    const gifImageRead = mcpPayload(await local.client.callTool({ name: 'get_exercise', arguments: { exercise_id: exerciseId } }), 'exercise revision before GIF image')
+    const gifUploadResult = await local.client.callTool({
+      name: 'upload_exercise_image',
+      arguments: {
+        exercise_id: exerciseId, mime: 'image/gif', data: gifInput.toString('base64'),
+        revision: gifImageRead.revision, request_id: 'cap-image-gif-upload-1'
+      }
+    })
+    const gifUpload = mcpPayload(gifUploadResult, 'animated GIF upload_exercise_image')
+    assert.equal(gifUpload.asset?.mime, 'image/webp')
+    assert.equal(gifUpload.asset?.animated, true)
+    assert.equal(gifUpload.asset?.frames, 2)
+    assert.equal(gifUpload.exercise?.media?.animated, true)
+    assert.equal(gifUpload.exercise?.media?.frames, 2)
+    assert.equal(gifUpload.exercise?.media?.url, undefined)
+    const gifAsset = await rawRequest(apiBase, `/api/assets/${gifUpload.asset.id}`, { headers: { Cookie: `gymsid=${userSession}` } })
+    assertStatus(gifAsset, 200, 'owner animated GIF retrieval')
+    assert.equal(hash(gifAsset.bytes), gifUpload.asset.sha256)
+    const normalizedGifMetadata = await sharp(gifAsset.bytes, { animated: true }).metadata()
+    assert.equal(Number(normalizedGifMetadata.pages), 2)
+    assert.equal(Number(normalizedGifMetadata.pageHeight), 32)
+    assert.deepEqual(normalizedGifMetadata.delay, [100, 100])
+    print('MCP_CAPABILITIES_PRIVATE_GIF_UPLOAD', { input_mime: 'image/gif', output_mime: gifUpload.asset.mime, frames: normalizedGifMetadata.pages, delay: normalizedGifMetadata.delay, owner_render_bytes_match: true, public_url_exposed: false, animation_preserved: true })
+
     const largeInput = await largeImage()
     assert.ok(largeInput.length > 1_500_000, `large image fixture is only ${largeInput.length} bytes`)
     const largeImageRead = mcpPayload(await local.client.callTool({ name: 'get_exercise', arguments: { exercise_id: exerciseId } }), 'exercise revision before large image')

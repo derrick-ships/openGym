@@ -13,6 +13,7 @@ import { modeOf, fmtSec, isBw, isPerSide, sideReps, MAX_PLANNED_WARMUPS } from '
 import { deriveSessionName } from './session-merge.js'
 import { uid, todayISO, DAYN, weekOrder, weekStartOf, fmtNum, exCount } from './format.js'
 import { t, exerciseNameFor } from './i18n-core.js'
+import { DEFAULT_SEC_INCREMENT, deloadFactorOf, policyFor, weightIncrement } from './progression.js'
 
 const PLAN_FMT = 1
 const WEEK_DAYS = [1, 2, 3, 4, 5, 6, 0]   // every getDay() index; only the reader's own
@@ -200,6 +201,175 @@ export function mergePlan(s, bundle, { schedule } = {}) {
     })
   }
   return { routines: bundle.routines.length }
+}
+
+/* --------------------------- plain-text routine share --------------------------- */
+
+// This is deliberately independent of the locale layer. A routine can be shared from a
+// Spanish (or any other) UI, but the recipient needs a stable English prescription and any
+// free text the owner entered must remain byte-for-byte theirs. It also deliberately reads only
+// the routine and catalogue/custom-exercise metadata: workouts, asset URLs, tokens and other
+// account data do not belong in a shareable copy.
+const SHARE_POLICY_NAME = {
+  off: 'No automatic progression',
+  linear: 'Linear progression',
+  greyskull: 'Greyskull LP',
+  double: 'Double progression',
+  time: 'Add time',
+}
+
+const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
+const shareNumber = value => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return String(value == null ? '' : value)
+  return String(Math.round(number * 100) / 100)
+}
+const shareList = value => Array.isArray(value) ? value.map(item => String(item)).join(', ') : String(value || '')
+const shareFields = (object, keys) => {
+  for (const key of keys) if (own(object, key) && object[key] != null) return object[key]
+  return null
+}
+const shareArray = value => Array.isArray(value) ? value : (value == null ? [] : [value])
+
+function shareExerciseFor(S, entry) {
+  return (S.customEx || []).find(ex => ex.id === entry.id) || EXIDX[entry.id] || null
+}
+
+function shareMode(entry, exercise) {
+  if (entry.mode === 'reps' || entry.mode === 'time' || entry.mode === 'cardio') return entry.mode
+  if (exercise?.bp === 'cardio') return 'cardio'
+  return modeOf({ ...entry, id: entry.id })
+}
+
+function shareExerciseName(entry, exercise) {
+  // Built-in `n` is the canonical English catalogue name. Do not use exerciseNameFor here:
+  // that helper intentionally follows the active UI locale.
+  return exercise?.n ?? entry.n ?? entry.name ?? entry.id ?? 'Unnamed exercise'
+}
+
+function bodyweightForShare(entry, exercise) {
+  if (entry?.bodyweight != null) return !!entry.bodyweight
+  return exercise ? isBodyweightEq(exercise) : isBodyweightEq(entry?.id)
+}
+
+function shareProgression(entry, routine, mode, unit, bodyweight) {
+  if (routine?.excludeFromProgression === true) return 'Progression: excluded by routine'
+  const policy = policyFor({ ...entry, id: entry.id }, routine, mode)
+  const policyName = SHARE_POLICY_NAME[policy] || String(policy)
+  const source = entry.prog ? 'exercise override' : routine?.prog ? 'routine default' : 'app default'
+  if (policy === 'off') return `Progression: ${policyName} (${source})`
+  if (mode === 'time') return `Progression: ${policyName} (${source}); increment: ${shareNumber(entry.inc > 0 ? entry.inc : DEFAULT_SEC_INCREMENT)} seconds`
+  const increment = bodyweight && !(entry.weight > 0)
+    ? repStepForShare(entry)
+    : weightIncrement(entry, unit)
+  const suffix = bodyweight && !(entry.weight > 0)
+    ? `${shareNumber(increment)} total reps`
+    : `${shareNumber(increment)} ${unit}`
+  return `Progression: ${policyName} (${source}); increment: ${suffix}`
+}
+
+// Unilateral work changes by two total reps so both sides move together. Keeping this local
+// avoids turning a bodyweight rep target into a misleading "one per side" statement.
+function repStepForShare(entry) { return isPerSide(entry) ? 2 : 1 }
+
+function sharePrescription(lines, entry, exercise, mode, unit) {
+  const bodyweight = bodyweightForShare(entry, exercise)
+  if (own(entry, 'sets')) lines.push(`   Sets: ${shareNumber(entry.sets)}`)
+  if (mode === 'cardio') {
+    if (own(entry, 'min')) lines.push(`   Duration: ${shareNumber(entry.min)} minutes`)
+    if (own(entry, 'speed')) lines.push(`   Speed: ${shareNumber(entry.speed)} km/h`)
+  } else if (mode === 'time') {
+    if (own(entry, 'sec')) lines.push(`   Duration: ${fmtSec(entry.sec)}`)
+    if (own(entry, 'weight') && !bodyweight) lines.push(`   Weight: ${shareNumber(entry.weight)} ${unit}`)
+    else if (bodyweight && own(entry, 'weight') && Number(entry.weight) > 0) lines.push(`   Added weight: ${shareNumber(entry.weight)} ${unit}`)
+    else if (bodyweight) lines.push('   Load: bodyweight')
+  } else {
+    if (own(entry, 'repsMin') || own(entry, 'repsMax')) {
+      const from = own(entry, 'repsMin') ? shareNumber(entry.repsMin) : shareNumber(entry.reps)
+      const to = own(entry, 'repsMax') ? shareNumber(entry.repsMax) : shareNumber(entry.reps)
+      lines.push(`   Reps: ${from === to ? from : `${from}-${to}`}`)
+    } else if (own(entry, 'reps')) {
+      lines.push(`   Reps: ${shareNumber(entry.reps)}`)
+    }
+    if (isPerSide(entry) && own(entry, 'reps')) {
+      lines.push(`   Reps per side: ${shareNumber(sideReps(entry.reps))} (${shareNumber(entry.reps)} total)`)
+    }
+    if (own(entry, 'weight') && !bodyweight) {
+      lines.push(`   Weight: ${shareNumber(entry.weight)} ${unit}`)
+    } else if (bodyweight && own(entry, 'weight') && Number(entry.weight) > 0) {
+      lines.push(`   Added weight: ${shareNumber(entry.weight)} ${unit}`)
+    } else if (bodyweight) {
+      lines.push('   Load: bodyweight')
+    }
+  }
+  if (own(entry, 'repsMax')) lines.push(`   Rep ceiling: ${shareNumber(entry.repsMax)}`)
+  if (own(entry, 'warmupSets')) lines.push(`   Warm-up sets: ${shareNumber(entry.warmupSets)}`)
+  if (own(entry, 'warmupRestSec') && Number(entry.warmupRestSec) > 0) {
+    lines.push(`   Warm-up rest override: ${shareNumber(entry.warmupRestSec)} seconds between warm-up sets; the break before the first work set uses work rest.`)
+  }
+  if (own(entry, 'restSec') && Number(entry.restSec) > 0) lines.push(`   Rest: ${shareNumber(entry.restSec)} seconds`)
+  else if (unit && Number.isFinite(Number(entry.restSec)) && Number(entry.restSec) === 0) {
+    // An explicit zero is meaningful only as "inherit" in the editor; omit it instead of
+    // making a recipient believe the routine intentionally has no rest.
+  }
+  if (entry.intensifier?.type === 'dropset') {
+    lines.push(`   Intensifier: Drop-set; ${shareNumber(entry.intensifier.count)} drops; ${shareNumber(entry.intensifier.pct)}% lighter`)
+  } else if (entry.intensifier?.type === 'restpause') {
+    lines.push(`   Intensifier: Rest-pause; ${shareNumber(entry.intensifier.totalReps)} extra reps; ${shareNumber(entry.intensifier.restSec)} seconds between bursts`)
+  }
+  if (entry.deloadFactor != null) {
+    lines.push(`   Deload 1RM target: ${shareNumber(deloadFactorOf(entry) * 100)}%`)
+  }
+}
+
+/**
+ * Format one routine as complete, human-readable English text for clipboard sharing.
+ * Every entry is emitted in order, including duplicate occurrences and custom metadata.
+ */
+export function routineShareText(S = {}, routine = {}) {
+  const unit = S.unit || 'kg'
+  const entries = Array.isArray(routine.ex) ? routine.ex : []
+  const groups = new Map()
+  entries.forEach(entry => { if (entry?.sg && !groups.has(entry.sg)) groups.set(entry.sg, groups.size + 1) })
+  const lines = [`Routine: ${String(routine.name == null ? '' : routine.name)}`]
+  if (routine.emoji != null && String(routine.emoji).length) lines.push(`Routine icon: ${String(routine.emoji)}`)
+  if (routine.note != null && String(routine.note).length) lines.push(`Routine note: ${String(routine.note)}`)
+  if (!entries.length) return lines.join('\n') + '\n'
+  lines.push(`Exercises: ${entries.length}`)
+  entries.forEach((entry, index) => {
+    const exercise = shareExerciseFor(S, entry) || {}
+    const mode = shareMode(entry, exercise)
+    const bodyweight = isBw({ ...entry, id: entry.id }) || entry.bodyweight === true
+    const primary = shareFields(exercise, ['primaries', 'primaryMuscles', 'primary'])
+    const secondary = shareFields(exercise, ['secondaries', 'secondaryMuscles', 'secondary'])
+    const primaryText = primary != null ? shareList(primary) : shareList(exercise.tg)
+    const secondaryText = secondary != null ? shareList(secondary) : shareList(exercise.sm)
+    lines.push('', `${index + 1}. ${String(shareExerciseName(entry, exercise))}`)
+    if (exercise.bp != null && String(exercise.bp).length) lines.push(`   Body part: ${String(exercise.bp)}`)
+    if (primaryText) lines.push(`   Primary muscles: ${primaryText}`)
+    if (secondaryText) lines.push(`   Secondary muscles: ${secondaryText}`)
+    if (exercise.eq != null && String(exercise.eq).length) lines.push(`   Equipment: ${String(exercise.eq)}`)
+    const icon = entry.icon ?? exercise.icon
+    if (icon != null && String(icon).length) lines.push(`   Icon: ${String(icon)}`)
+    if (exercise.desc != null && String(exercise.desc).length) lines.push(`   Description: ${String(exercise.desc)}`)
+    const instructions = shareFields(exercise, ['instructions', 'st', 'steps'])
+    const instructionList = shareArray(instructions).filter(value => value != null && String(value).length)
+    if (instructionList.length) {
+      lines.push('   Instructions:')
+      instructionList.forEach((instruction, instructionIndex) => lines.push(`      ${instructionIndex + 1}. ${String(instruction)}`))
+    }
+    lines.push(`   Mode: ${mode}`)
+    sharePrescription(lines, entry, exercise, mode, unit)
+    const effectivePolicy = routine.excludeFromProgression === true ? 'off' : policyFor({ ...entry, id: entry.id }, routine, mode)
+    if (!own(entry, 'deloadFactor') && mode === 'reps' && !bodyweight && (effectivePolicy === 'linear' || effectivePolicy === 'double')) {
+      lines.push('   Deload 1RM target: 90% (app default)')
+    }
+    if (!(own(entry, 'restSec') && Number(entry.restSec) > 0) && Number.isFinite(Number(S.restSec))) lines.push(`   Rest: ${shareNumber(S.restSec)} seconds (workout default)`)
+    lines.push(`   ${shareProgression(entry, routine, mode, unit, bodyweight)}`)
+    if (entry.sg && groups.has(entry.sg)) lines.push(`   Superset: group ${groups.get(entry.sg)}`)
+    if (entry.note != null && String(entry.note).length) lines.push(`   Note: ${String(entry.note)}`)
+  })
+  return lines.join('\n') + '\n'
 }
 
 /* ------------------------------- printable PDF ------------------------------- */

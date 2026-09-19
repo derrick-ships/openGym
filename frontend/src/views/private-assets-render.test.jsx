@@ -128,6 +128,7 @@ describe('private custom image rendering', () => {
     customExSheet(iconEdited)
     mount(<Modals />)
     await settle()
+    expect(container.querySelector('input[type="file"]').accept).toContain('image/gif')
     const pickerButton = container.querySelector('button[aria-label="Pick an icon"]')
     expect(pickerButton).toBeTruthy()
 

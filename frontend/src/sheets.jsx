@@ -17,9 +17,9 @@ import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
 import { Button, Slider, Switch, Segmented, SelectRow, Row, TextField, NumberField, MultiSelectRow } from './components/ui.jsx'
 import { glyphOf, GLYPH_GROUPS, GLYPHS, DEFAULT_GLYPH } from './lib/glyphs.js'
-import BodyMap from './components/BodyMap.jsx'
+import BodyMap, { bodyMapPngBlob } from './components/BodyMap.jsx'
 import MuscleExplorer from './components/MuscleExplorer.jsx'
-import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
+import { exerciseMuscleSnapshot, loadOfWorkouts, rankOf, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { importHevyData, HevyApiError, HEVY_DEV_SETTINGS, mergeHevyRoutines } from './lib/import-hevy.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan, planPrintHTML } from './lib/plan-share.js'
@@ -27,7 +27,7 @@ import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { exerciseHistory } from './lib/exercise-history.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS, weightIncrement } from './lib/progression.js'
 import { normalizeRepRange } from './lib/rep-range.js'
-import { MOBILE, shareExport, printHtml, shareText, copyText } from './lib/mobile.js'
+import { MOBILE, shareExport, printHtml, shareText, copyText, shareBlob } from './lib/mobile.js'
 import { sessionShareText } from './lib/session-share.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
@@ -770,7 +770,7 @@ export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex=
 
 /* ============================ custom exercises (issue #11) ============================ */
 // Name + body part is all it takes — the exercise then behaves like any built-in one
-// (planning, logging, PRs, stats), just without an animation.
+// (planning, logging, PRs, stats), with an optional private image or animation.
 function CustomExForm({ existing, prefill, onDone, close }) {
   const nameRef = useRef(null)
   const onNameFocus = useSheetKeyboard(nameRef)
@@ -844,7 +844,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   }
   return <>
     <h3>{existing ? t('Edit custom exercise') : t('Create your own exercise')}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('Name it and pick a body part — it behaves like any other exercise, just without an animation.')}</div>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Name it and pick a body part — it behaves like any other exercise, with an optional private image or animation.')}</div>
     <input ref={nameRef} className="input" placeholder={t('Exercise name')} value={n} onFocus={onNameFocus} onChange={e => setN(e.target.value)} />
     <div className="chips" style={{ margin: '12px 0' }}>
       {BODYPARTS.map(b => <button key={b} className={'chip' + (bp === b ? ' on' : '')} onClick={() => setBp(b)}>{t(b)}</button>)}
@@ -873,12 +873,12 @@ function CustomExForm({ existing, prefill, onDone, close }) {
         <Icon name={customExerciseGlyph(icon) || 'dumbbell'} />
       </button>
     </div>
-    <div className="small dim" style={{ marginTop: 12 }}>{t('Private exercise image (JPEG, PNG or WebP; max 10 MiB)')}</div>
+    <div className="small dim" style={{ marginTop: 12 }}>{t('Private exercise image (JPEG, PNG, WebP or GIF; max 10 MiB)')}</div>
     {(preview || existingPreview) && <img src={preview || existingPreview} alt={t('Exercise preview')} style={{ display: 'block', width: 160, maxHeight: 120, objectFit: 'cover', borderRadius: 10, margin: '8px 0' }} />}
     <div className="row" style={{ gap: 8, marginTop: 8 }}>
       <label className="btn tinted" style={{ flex: 1, textAlign: 'center', cursor: 'pointer' }}>
         {image ? t('Replace image') : t('Choose image')}
-        <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { setImage(e.target.files?.[0] || null); setRemoveImage(false); e.target.value = '' }} />
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }} onChange={e => { setImage(e.target.files?.[0] || null); setRemoveImage(false); e.target.value = '' }} />
       </label>
       {(existing?.media?.id || image) && <Button variant="ghost" onClick={() => { setImage(null); setRemoveImage(true) }}>{t('Remove image')}</Button>}
     </div>
@@ -1669,6 +1669,98 @@ function DayAddRoutine({ day, close }) {
 }
 export const dayAddRoutineSheet = day => ui().openSheet(close => <DayAddRoutine day={day} close={close} />)
 
+const exportFileName = value => String(value || 'openGym-workout')
+  .replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'opengym-workout'
+
+function isShareCancellation(error) {
+  return error?.name === 'AbortError' || error?.code === 'CANCELED' || /cancel/i.test(error?.message || '')
+}
+
+// The same export controls are used from the finish confirmation and from a saved workout's
+// detail sheet. The latter matters because the confirmation is transient: once it is dismissed,
+// the user must still be able to share the exact saved session and its body map from History.
+function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
+  const st = useStore(s => s.S)
+  const mapRef = useRef(null)
+  const [mapReady, setMapReady] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const text = sessionShareText(st, w, prs, e1prs)
+  const load = loadOfWorkouts([w])
+  const labels = rankOf(load).worked.map(slug => MUSCLE_NAME[slug] || slug)
+  const nativeShare = MOBILE || (typeof navigator !== 'undefined' && typeof navigator.share === 'function')
+  const file = `${exportFileName(w?.name)}-body-map.png`
+
+  const share = async () => {
+    if (busy) return
+    setBusy('share'); setError('')
+    try {
+      if (nativeShare) {
+        await shareText(t('Workout complete!'), text)
+        toast(t('Workout shared'))
+      } else {
+        await copyText(text)
+        toast(t('Workout copied'))
+      }
+    } catch (cause) {
+      // Dismissing the OS share sheet is a normal end state, not an error. A real share failure
+      // gets one clipboard fallback so desktop browsers without Web Share still deliver text.
+      if (!isShareCancellation(cause)) {
+        try { await copyText(text); toast(t('Workout copied')) }
+        catch { setError(t('Could not share workout')) }
+      }
+    } finally { setBusy('') }
+  }
+
+  const copy = async () => {
+    if (busy) return
+    setBusy('copy'); setError('')
+    try { await copyText(text); toast(t('Workout copied')) }
+    catch { setError(t('Could not copy workout')) }
+    finally { setBusy('') }
+  }
+
+  const downloadMap = async () => {
+    if (busy || !mapReady) return
+    setBusy('map'); setError('')
+    try {
+      const blob = await bodyMapPngBlob(mapRef.current, { title: w?.name || t('Workout'), labels })
+      if (MOBILE) await shareBlob(blob, file)
+      else {
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url; anchor.download = file; anchor.style.display = 'none'
+        document.body.appendChild(anchor); anchor.click(); anchor.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+      toast(t('Body map downloaded'))
+    } catch (cause) {
+      if (!isShareCancellation(cause)) setError(t('Could not download body map'))
+    } finally { setBusy('') }
+  }
+
+  return <>
+    <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
+    <div ref={mapRef}>
+      <BodyMap load={load} body={st.body} onReady={() => setMapReady(true)} />
+    </div>
+    <div style={{ height: 10 }} />
+    <div className="row" style={{ gap: 8 }}>
+      <Button variant="ghost" icon="upload" onClick={share} disabled={!!busy} style={{ flex: 1 }} aria-busy={busy === 'share'}>
+        {busy === 'share' ? t('Sharing…') : t('Share workout')}
+      </Button>
+      <Button variant="ghost" icon="clipboard" onClick={copy} disabled={!!busy} style={{ flex: 1 }} aria-busy={busy === 'copy'}>
+        {busy === 'copy' ? t('Copying…') : t('Copy workout')}
+      </Button>
+    </div>
+    <div style={{ height: 8 }} />
+    <Button variant="tinted" icon="download" onClick={downloadMap} disabled={!mapReady || !!busy} aria-busy={busy === 'map'}>
+      {busy === 'map' ? t('Preparing…') : t('Download body map')}
+    </Button>
+    {error && <div className="small" role="alert" style={{ color: 'var(--red)', marginTop: 8 }}>{error}</div>}
+  </>
+}
+
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
   const noteRef = useRef(null)
@@ -1726,7 +1818,7 @@ function WorkoutDetail({ w, close }) {
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
     {grouped ? groups.map(g => {
       const r = g.rid ? st.routines.find(x => x.id === g.rid) : null
-      const setN = g.items.reduce((n, [e]) => n + e.sets.filter(s => s.done && !isWarmupRow(s)).length, 0)
+      const setN = workSetsDone({ entries: g.items.map(([e]) => e) })
       const vol = workoutVolume({ entries: g.items.map(([e]) => e) })
       return <div key={g.key}>
         <div className="row between" style={{ margin: '2px 0 8px', paddingBottom: 6, borderBottom: '1px solid var(--sep)' }}>
@@ -1738,6 +1830,7 @@ function WorkoutDetail({ w, close }) {
         {g.items.map(([e, i]) => entryRow(e, i))}
       </div>
     }) : w.entries.map((e, i) => entryRow(e, i))}
+    <CompletedWorkoutExports w={{ ...w, note }} prs={w.prs || []} />
     <div className="small muted" style={{ margin: '4px 0 6px' }}>{t('Session note')}</div>
     <textarea ref={noteRef} className="input" rows={2} maxLength={NOTE_MAX} value={note}
       placeholder={t('How the session went as a whole.')}
@@ -2123,12 +2216,6 @@ export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComple
 
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
-  const shareTextValue = sessionShareText(st, w, prs, e1prs)
-  const canShare = MOBILE || (typeof navigator !== 'undefined' && typeof navigator.share === 'function')
-  const share = () => shareText(t('Workout complete!'), shareTextValue).catch(error => {
-    if (error?.name !== 'AbortError') toast(t('Could not share workout'))
-  })
-  const copy = () => copyText(shareTextValue).then(() => toast(t('Workout copied'))).catch(() => toast(t('Could not copy workout')))
   return <div style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
@@ -2142,13 +2229,7 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
       {prs.map(id => <div key={id} className="small accent row" style={{ gap: 5 }}><Icon name="trophy" style={{ fontSize: 13 }} />{t('New PR:')} <span className="capitalize">{EXIDX[id] ? exerciseNameFor(EXIDX[id]) : id}</span></div>)}
       {e1prs.map(p => <div key={p.id} className="small accent row" style={{ gap: 5 }}><Icon name="chartLine" style={{ fontSize: 13 }} />{t('Best estimated 1RM:')} <span className="capitalize">{EXIDX[p.id] ? exerciseNameFor(EXIDX[p.id]) : p.id}</span> · {fmtNum(p.est)} {st.unit}</div>)}
     </div>}
-    <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
-    <BodyMap load={loadOfWorkouts([w])} body={st.body} />
-    <div style={{ height: 14 }} />
-    <div className="row" style={{ gap: 8 }}>
-      {canShare && <Button variant="ghost" icon="upload" onClick={share} style={{ flex: 1 }}>{t('Share')}</Button>}
-      <Button variant="ghost" icon="clipboard" onClick={copy} style={{ flex: 1 }}>{t('Copy')}</Button>
-    </div>
+    <CompletedWorkoutExports w={w} prs={prs} e1prs={e1prs} />
     <div style={{ height: 8 }} />
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>

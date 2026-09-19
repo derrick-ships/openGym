@@ -1,18 +1,32 @@
 import { EXIDX } from './exercises.js'
 import { fmtDate, fmtDur, fmtNum } from './format.js'
-import { dateLocale, exerciseNameFor } from './i18n-core.js'
-import { modeOf, setLabel, setsDone, workSetsDone } from './history.js'
-import { isWarmupRow } from './workout-model.js'
+import { dateLocale } from './i18n-core.js'
+import { doneUnits, modeOf, setLabel, setsDone, workSetsDone } from './history.js'
+import { clustersOf, dropsOf, hasCompletedWork, isSideSet, isWarmupRow } from './workout-model.js'
 import { loadOfWorkouts, MUSCLE_NAME } from './muscles.js'
 
 const exerciseFor = (S, entry) =>
   (S.customEx || []).find(ex => ex.id === entry.id) || EXIDX[entry.id] || entry.muscleSnapshot || {}
 
-const nameFor = (entry, exercise) => exerciseNameFor(exercise) || entry.muscleSnapshot?.n || entry.id
+// The share is deliberately English and portable: use the catalogue's canonical name rather
+// than the current UI locale, which may be Spanish/French on the device receiving the text.
+const nameFor = (entry, exercise) => exercise?.n || entry.muscleSnapshot?.n || entry.n || entry.id
 
 const dateTime = (w) => {
   if (!w?.start) return w?.d ? fmtDate(w.d, false, true) : ''
   return new Date(w.start).toLocaleString(dateLocale(), { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+const nestedText = (set, unit, prefix = '', bodyweight = false) => {
+  const parts = []
+  const drops = dropsOf(set)
+  const dropText = drop => bodyweight
+    ? (drop.w > 0 ? `+${fmtNum(drop.w)} × ${fmtNum(drop.r || 0)}${unit ? ` ${unit}` : ''}` : `${fmtNum(drop.r || 0)} reps`)
+    : `${fmtNum(drop.w || 0)}×${fmtNum(drop.r || 0)}${unit ? ` ${unit}` : ''}`
+  if (drops.length) parts.push(`${prefix}drops: ${drops.map(dropText).join(', ')}`)
+  const clusters = clustersOf(set)
+  if (clusters.length) parts.push(`${prefix}rest-pause: ${clusters.map(cluster => `${fmtNum(cluster.r || 0)} reps (${fmtNum(cluster.restSec || 0)}s rest)`).join(', ')}`)
+  return parts
 }
 
 const setText = (set, target, unit, entryId = target?.id || '') => {
@@ -21,9 +35,22 @@ const setText = (set, target, unit, entryId = target?.id || '') => {
   const mode = target
     ? modeOf(target)
     : set.min != null || set.speed != null ? 'cardio' : set.sec != null ? 'time' : 'reps'
-  if (mode === 'cardio' || mode === 'time') return label + (set.w > 0 ? ` ${unit}` : '')
-  if (target?.bodyweight || EXIDX[id]?.eq === 'body weight') return label + (set.w > 0 ? ` ${unit}` : '')
-  return label + ` ${unit}`
+  const needsUnit = mode === 'cardio' || mode === 'time'
+    ? set.w > 0
+    : set.w > 0 || (!target?.bodyweight && EXIDX[id]?.eq !== 'body weight')
+  const bodyweight = !!(target?.bodyweight || EXIDX[id]?.eq === 'body weight')
+  const nestedFor = isSideSet(set)
+    ? ['L', 'R'].flatMap(side => hasCompletedWork(set.sides[side]) ? nestedText(set.sides[side], unit, `${side} `, bodyweight) : [])
+    : nestedText(set, unit, '', bodyweight)
+  const addUnit = part => {
+    const effort = part.match(/^(.*?)(\s\((?:RIR|RPE)\s[^)]+\))$/)
+    return effort ? `${effort[1]} ${unit}${effort[2]}` : `${part} ${unit}`
+  }
+  const base = !needsUnit || !unit ? label
+    : isSideSet(set)
+      ? label.split(' · ').map(part => part.trim().endsWith('—') ? part : addUnit(part)).join(' · ')
+      : addUnit(label)
+  return [base, ...nestedFor].join(' · ')
 }
 
 const musclesFor = (entry, exercise) => {
@@ -47,6 +74,7 @@ export function sessionShareText(S, w, prs = [], e1prs = []) {
     ...(w?.bw != null ? [`Bodyweight: ${fmtNum(w.bw)} ${S.unit || ''}`.trim()] : []),
     `Volume: ${fmtNum(w?.vol || 0)} ${S.unit || ''}`.trim(),
     `Sets: ${setsDone(w)} (${workSetsDone(w)} work)`,
+    ...(w?.note ? [`Note: ${w.note}`] : []),
     '',
     'Exercises:',
   ]
@@ -58,8 +86,9 @@ export function sessionShareText(S, w, prs = [], e1prs = []) {
     lines.push(`${index + 1}. ${nameFor(entry, exercise)}`)
     const muscles = musclesFor(entry, exercise)
     if (muscles) lines.push(`   Muscles: ${muscles}`)
-    lines.push(`   Sets: ${rows.length}`)
+    lines.push(`   Sets: ${rows.reduce((count, set) => count + doneUnits(set), 0)}`)
     rows.forEach((set, rowIndex) => lines.push(`   ${isWarmupRow(set) ? 'Warm-up' : `Set ${rowIndex + 1}`}: ${setText(set, target, S.unit || '', entry.id)}`))
+    if (entry.note) lines.push(`   Note: ${entry.note}`)
   })
 
   const muscleLoad = loadOfWorkouts([w])

@@ -146,6 +146,23 @@ describe('map load with warm-up phases', () => {
   })
 })
 
+describe('map load with unilateral completion', () => {
+  it('keeps a completed side visible when its partner is still unchecked', () => {
+    const load = loadOfWorkouts([{
+      entries: [{
+        id: '0025',
+        sets: [{ sides: {
+          L: { w: 60, r: 8, done: true },
+          R: { w: 60, r: 8, done: false },
+        }, done: false }],
+      }],
+    }])
+    expect(load.chest).toBe(0.5)
+    expect(load.triceps).toBe(0.2)
+    expect(load.deltoids).toBe(0.2)
+  })
+})
+
 // A custom exercise that was deleted from the catalogue survives in history only as the
 // muscleSnapshot finish-workout wrote. Reading it back is what keeps those sessions in the
 // body map and in Stats instead of silently contributing nothing.

@@ -400,18 +400,49 @@ try {
 
   const animatedFrameA = await solidImage('webp', 32, 32, { r: 220, g: 20, b: 40 })
   const animatedFrameB = await solidImage('webp', 32, 32, { r: 20, g: 80, b: 220 })
-  const animatedWebp = await sharp([animatedFrameA, animatedFrameB], { join: { animated: true } })
-    .webp({ loop: 0, delay: [100, 100] }).toBuffer()
-  const animatedMetadata = await sharp(animatedWebp, { animated: true }).metadata()
+  const animatedGif = await sharp([animatedFrameA, animatedFrameB], { join: { animated: true } })
+    .gif({ loop: 0, delay: [100, 100] }).toBuffer()
+  const animatedMetadata = await sharp(animatedGif, { animated: true }).metadata()
   assert.ok(Number(animatedMetadata.pages) > 1, 'animated fixture must contain multiple pages')
+  assert.equal(Number(animatedMetadata.pageHeight), 32, 'animated fixture must expose a frame height')
   const animatedResult = await request(apiBase, '/api/assets', {
-    ...bodyOptions({ mime: 'image/webp', data: animatedWebp.toString('base64') }), headers: { Cookie: `gymsid=${session}` }
+    ...bodyOptions({ mime: 'image/gif', data: animatedGif.toString('base64') }), headers: { Cookie: `gymsid=${session}` }
   })
-  assertStatus(animatedResult, 400, 'animated image fixture')
-  assert.equal(animatedResult.data.code, 'IMAGE_ANIMATED')
-  print('gate4_animated_image_pages', animatedMetadata.pages)
-  print('gate4_animated_image_status', 400)
-  print('gate4_animated_image_code', 'IMAGE_ANIMATED')
+  assertStatus(animatedResult, 201, 'animated GIF fixture')
+  assert.equal(animatedResult.data.asset.mime, 'image/webp')
+  const animatedStateRead = await request(apiBase, '/api/data', { headers: { Cookie: `gymsid=${session}` } })
+  const animatedState = {
+    ...animatedStateRead.data.state,
+    customEx: [...(animatedStateRead.data.state.customEx || []), { id: 'c-animated-gif', n: 'animated GIF fixture', bp: 'full body', eq: 'custom', custom: true, media: animatedResult.data.asset }]
+  }
+  assertStatus(await request(apiBase, '/api/data', {
+    method: 'PUT', headers: { Cookie: `gymsid=${session}`, 'If-Match': animatedStateRead.data.revision, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: animatedState })
+  }), 200, 'animated GIF reference attach')
+  const servedAnimated = await rawRequest(apiBase, `/api/assets/${animatedResult.data.asset.id}`, { headers: { Cookie: `gymsid=${session}` } })
+  assertStatus(servedAnimated, 200, 'animated GIF private retrieval')
+  assert.equal(hash(servedAnimated.bytes), animatedResult.data.asset.sha256)
+  const normalizedAnimatedMetadata = await sharp(servedAnimated.bytes, { animated: true }).metadata()
+  assert.ok(Number(normalizedAnimatedMetadata.pages) > 1, 'normalized GIF must retain multiple pages')
+  assert.equal(Number(normalizedAnimatedMetadata.pageHeight), 32, 'normalized GIF must retain frame height')
+  assert.deepEqual(normalizedAnimatedMetadata.delay, [100, 100], 'normalized GIF must retain frame timing')
+  print('gate4_animated_gif_input_pages', animatedMetadata.pages)
+  print('gate4_animated_gif_output_pages', normalizedAnimatedMetadata.pages)
+  print('gate4_animated_gif_output_delay', normalizedAnimatedMetadata.delay)
+  print('gate4_animated_gif_mime', animatedResult.data.asset.mime)
+  print('gate4_animated_gif_status', 201)
+  print('gate4_animated_gif_animation_preserved', true)
+
+  const tooManyAnimationFrames = await sharp(Array.from({ length: 121 }, (_, index) => index % 2 ? animatedFrameA : animatedFrameB), { join: { animated: true } })
+    .gif({ loop: 0, delay: Array(121).fill(100) }).toBuffer()
+  const tooManyFramesResult = await request(apiBase, '/api/assets', {
+    ...bodyOptions({ mime: 'image/gif', data: tooManyAnimationFrames.toString('base64') }), headers: { Cookie: `gymsid=${session}` }
+  })
+  assertStatus(tooManyFramesResult, 413, 'animated frame-limit fixture')
+  assert.equal(tooManyFramesResult.data.code, 'IMAGE_FRAMES')
+  print('gate4_animated_frame_limit', 120)
+  print('gate4_animated_frame_limit_status', 413)
+  print('gate4_animated_frame_limit_code', 'IMAGE_FRAMES')
 
   const oversizedDimensions = await sharp({ create: { width: 5001, height: 5001, channels: 3, background: { r: 0, g: 0, b: 0 } } })
     .png({ compressionLevel: 9 }).toBuffer()

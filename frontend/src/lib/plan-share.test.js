@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { buildPlanBundle, mergePlan, parsePlan } from './plan-share.js'
+import { afterEach, describe, expect, it } from 'vitest'
+import { buildPlanBundle, mergePlan, parsePlan, routineShareText } from './plan-share.js'
+import { _setLangState } from './i18n-core.js'
 
 // There was no test file for plan sharing at all, which is how a whole prescription field
 // went missing without anyone noticing.
@@ -142,5 +143,95 @@ describe('week schedule as a routine-id list', () => {
 
   it('scheduledDays counts a populated array day as 1 and a [] / absent day as 0', () => {
     expect(parsePlan({ opengym_plan: 1, routines: [], customEx: [], week: { 1: ['a'], 2: [], 4: 'b' } }).scheduledDays).toBe(2)
+  })
+})
+
+describe('plain-text routine sharing', () => {
+  afterEach(() => _setLangState('en', null, null, null))
+
+  it('prints every occurrence and its complete prescription in English without history or private media', () => {
+    // The output is deliberately English even when the editor is currently Spanish.
+    _setLangState('es', { Routine: 'Rutina', Exercises: 'Ejercicios' }, null, { '0025': 'Press de banca' })
+    const S = {
+      unit: 'kg',
+      restSec: 90,
+      routines: [{
+        id: 'push', name: 'Push day', prog: 'linear', excludeFromProgression: false,
+        ex: [
+          {
+            id: '0025', sets: 3, reps: 10, weight: 80, mode: 'reps', side: true,
+            warmupSets: 2, warmupRestSec: 30, restSec: 120, prog: 'double', inc: 2.5,
+            repsMin: 6, repsMax: 12, deloadFactor: 0.8,
+            intensifier: { type: 'dropset', count: 2, pct: 20 }, sg: 'pair',
+            note: 'Keep the wrists stacked\nexactly.',
+          },
+          { id: '0025', sets: 1, mode: 'time', sec: 45, weight: 0, restSec: 60, note: 'Second occurrence' },
+        ]
+      }],
+      customEx: [{
+        id: 'custom-1', n: 'My exact exercise', bp: 'back', desc: 'User description',
+        st: ['User instruction'], primaries: ['lats'], secondaries: ['biceps'], eq: 'cable',
+        icon: 'pullup', media: { id: 'private-asset', sha256: 'secret' },
+      }],
+      workouts: [{ id: 'history', entries: [{ id: '0025', sets: [{ w: 999, r: 99, done: true }] }] }],
+    }
+    const text = routineShareText(S, S.routines[0])
+
+    expect(text).toContain('Routine: Push day')
+    expect(text).toContain('Exercises: 2')
+    expect(text).toContain('Reps: 6-12')
+    expect(text).toContain('Reps per side: 5 (10 total)')
+    expect(text).toContain('Warm-up sets: 2')
+    expect(text).toContain('Warm-up rest override: 30 seconds between warm-up sets; the break before the first work set uses work rest.')
+    expect(text).toContain('Rest: 120 seconds')
+    expect(text).toContain('Progression: Double progression (exercise override); increment: 2.5 kg')
+    expect(text).toContain('Deload 1RM target: 80%')
+    expect(text).toContain('Intensifier: Drop-set; 2 drops; 20% lighter')
+    expect(text).toContain('Superset: group 1')
+    expect(text).toContain('Note: Keep the wrists stacked\nexactly.')
+    expect(text).toContain('2. barbell bench press') // occurrence order stays intact; locale is not used for sharing
+    expect(text).not.toContain('Press de banca')
+    expect(text).not.toContain('999')
+
+    const customRoutine = {
+      id: 'share', name: 'Custom routine', prog: 'linear', excludeFromProgression: true,
+      ex: [{ id: 'custom-1', sets: 2, reps: 8, weight: 10, note: 'Do not translate this.' }]
+    }
+    const customText = routineShareText(S, customRoutine)
+    expect(customText).toContain('1. My exact exercise')
+    expect(customText).toContain('Primary muscles: lats')
+    expect(customText).toContain('Secondary muscles: biceps')
+    expect(customText).toContain('Equipment: cable')
+    expect(customText).toContain('Description: User description')
+    expect(customText).toContain('Instructions:\n      1. User instruction')
+    expect(customText).toContain('Sets: 2')
+    expect(customText).toContain('Reps: 8')
+    expect(customText).toContain('Weight: 10 kg')
+    expect(customText).toContain('Note: Do not translate this.')
+    expect(customText).not.toContain('private-asset')
+  })
+
+  it('uses the effective time/cardio and bodyweight rules without inventing a load', () => {
+    const S = {
+      unit: 'lb', restSec: 75, routines: [], customEx: [], workouts: []
+    }
+    const routine = {
+      id: 'mixed', name: 'Mixed', prog: 'time', ex: [
+        { id: '0025', sets: 2, mode: 'time', sec: 45, weight: 0, inc: 10 },
+        { id: '1160', sets: 3, min: 4, speed: 8, restSec: 30 },
+        { id: '0025', sets: 3, reps: 10, weight: 0, bodyweight: true, side: true },
+      ]
+    }
+    const text = routineShareText(S, routine)
+
+    expect(text).toContain('Mode: time')
+    expect(text).toContain('Duration: 0:45')
+    expect(text).toContain('Progression: Add time (routine default); increment: 10 seconds')
+    expect(text).toContain('Mode: cardio')
+    expect(text).toContain('Duration: 4 minutes')
+    expect(text).toContain('Speed: 8 km/h')
+    expect(text).toContain('Load: bodyweight')
+    expect(text).toContain('Reps per side: 5 (10 total)')
+    expect(text).toContain('Rest: 75 seconds (workout default)')
   })
 })

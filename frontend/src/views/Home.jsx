@@ -4,12 +4,19 @@ import { useStore } from '../store/useStore.js'
 import { effectiveRoutines, effectiveRoutineIds, nextTrainingDay, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, weekStartOf, weekDayOffset, DAYS, DAYN } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, starterPlanSheet, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, workoutDetailSheet, startFlow, starterPlanSheet, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf } from '../lib/glyphs.js'
+
+export function todayAction({ active, doneToday, routineIds, onResume, onDetail, onStart, onRest }) {
+  if (active) return onResume()
+  if (doneToday) return onDetail(doneToday)
+  if (routineIds.length) return onStart(routineIds)
+  return onRest()
+}
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
@@ -58,7 +65,15 @@ export default function Home() {
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
-  const onToday = () => { if (S.active) nav('/workout'); else if (todayRoutines.length) startFlow(effectiveRoutineIds(S, todayISO())); else dayOverrideSheet(todayISO()) }
+  const onToday = () => todayAction({
+    active: S.active,
+    doneToday,
+    routineIds: effectiveRoutineIds(S, todayISO()),
+    onResume: () => nav('/workout'),
+    onDetail: workoutDetailSheet,
+    onStart: startFlow,
+    onRest: () => dayOverrideSheet(todayISO()),
+  })
 
   return <div className="narrow">
     <div className="hdr">

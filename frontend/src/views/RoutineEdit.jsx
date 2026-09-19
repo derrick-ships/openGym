@@ -15,11 +15,32 @@ import { Button, Row, SelectRow, Switch } from '../components/ui.jsx'
 import SwipeToDelete from '../components/SwipeToDelete.jsx'
 import { copyRoutine } from '../lib/routines.js'
 import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
-import BodyMap from '../components/BodyMap.jsx'
+import BodyMap, { bodyMapPngBlob } from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
+import { MOBILE, shareBlob } from '../lib/mobile.js'
+import { routineShareText } from '../lib/plan-share.js'
 
 export const ROUTINE_LONG_PRESS_MS = 380
 export const ROUTINE_DRAG_SLOP = 8
+
+function safeExportName(value) {
+  const name = String(value || 'workout').normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')
+  return (name || 'workout').slice(0, 64) + '-muscles.png'
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
+  const field = document.createElement('textarea')
+  field.value = value
+  field.setAttribute('readonly', '')
+  field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+  document.body.appendChild(field)
+  field.select()
+  const copied = document.execCommand?.('copy')
+  field.remove()
+  if (!copied) throw new Error('clipboard unavailable')
+}
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value))
 
@@ -309,8 +330,14 @@ export default function RoutineEdit() {
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
   const toast = useUI(s => s.toast)
+  const bodyMapRef = useRef(null)
+  const [bodyMapReady, setBodyMapReady] = useState(false)
+  const [bodyMapBusy, setBodyMapBusy] = useState(false)
+  const [bodyMapError, setBodyMapError] = useState('')
+  const [shareBusy, setShareBusy] = useState(false)
   const r = S.routines.find(x => x.id === id)
   useEffect(() => { if (!r) nav('/plan') }, [!!r])
+  useEffect(() => { setBodyMapReady(false); setBodyMapError('') }, [S.body])
   // Editing here has no explicit "save" — every field change persists immediately. A single
   // auto-backup on the way out (not per keystroke) covers the whole editing session, deletion
   // included: this still unmounts after the delete button navigates away.
@@ -420,9 +447,36 @@ export default function RoutineEdit() {
     {r.ex.length > 0 && (() => {
       const load = loadOfRoutine(r)
       const { worked } = rankOf(load)
+      const downloadBodyMap = async () => {
+        if (bodyMapBusy) return
+        setBodyMapBusy(true); setBodyMapError('')
+        try {
+          const blob = await bodyMapPngBlob(bodyMapRef.current, {
+            title: r.name,
+            labels: worked.map(m => t(MUSCLE_NAME[m])),
+          })
+          const filename = safeExportName(r.name)
+          if (MOBILE) await shareBlob(blob, filename)
+          else {
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url; link.download = filename; link.rel = 'noopener'; link.click()
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+          }
+          toast(t('Body map downloaded'))
+        } catch (error) {
+          setBodyMapError(t('Could not download the body map.'))
+        } finally { setBodyMapBusy(false) }
+      }
       return <div className="card" style={{ marginTop: 12 }}>
         <h2>{t('What this session hits')}</h2>
-        <BodyMap load={load} body={S.body} />
+        <div ref={bodyMapRef}>
+          <BodyMap load={load} body={S.body} onReady={() => setBodyMapReady(true)} />
+        </div>
+        <Button variant="tinted" size="sm" icon="download" onClick={downloadBodyMap} disabled={!bodyMapReady || bodyMapBusy}>
+          {bodyMapBusy ? t('Preparing download…') : t('Download body map')}
+        </Button>
+        {bodyMapError && <div className="small" role="alert" style={{ color: 'var(--red)', marginTop: 7 }}>{bodyMapError}</div>}
         <div className="mchips">
           {worked.slice(0, 6).map(m => <span key={m} className="mchip">{t(MUSCLE_NAME[m])}</span>)}
         </div>
@@ -444,6 +498,17 @@ export default function RoutineEdit() {
       update(s => { s.routines.push(copy) })
       nav('/plan/r/' + copy.id)
     }}>{t('Copy routine')}</Button>
+    <div style={{ height: 10 }} />
+    <Button variant="tinted" icon="clipboard" disabled={shareBusy} onClick={async () => {
+      if (shareBusy) return
+      setShareBusy(true)
+      try {
+        await copyText(routineShareText(S, r))
+        toast(t('Routine copied to clipboard'))
+      } catch (error) {
+        toast(t('Could not copy the routine.'))
+      } finally { setShareBusy(false) }
+    }}>{shareBusy ? t('Copying…') : t('Share routine')}</Button>
     <div style={{ height: 10 }} />
     <Button variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,

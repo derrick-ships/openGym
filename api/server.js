@@ -49,6 +49,8 @@ const MAX_BODY = 16 * 1024 * 1024;
 const IMAGE_MAX_PIXELS = 25_000_000;
 const IMAGE_MAX_EDGE = 2048;
 const IMAGE_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const IMAGE_MAX_ANIMATION_FRAMES = 120;
+const IMAGE_MAX_ANIMATION_OUTPUT_BYTES = 4 * 1024 * 1024;
 const IMAGE_QUOTA_BYTES = 200 * 1024 * 1024;
 const IMAGE_PROCESSING_LIMIT = 2;
 const IMAGE_PROCESSING_QUEUE_LIMIT = 8;
@@ -1248,7 +1250,8 @@ async function withImageProcessing(fn) {
 const allowedImage = new Map([
   ['image/jpeg', b => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
   ['image/png', b => b.length > 8 && b.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))],
-  ['image/webp', b => b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP']
+  ['image/webp', b => b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP'],
+  ['image/gif', b => b.length > 6 && (b.toString('ascii', 0, 6) === 'GIF87a' || b.toString('ascii', 0, 6) === 'GIF89a')]
 ]);
 function imageBytes(body) {
   const mime = String(body?.mime || '').toLowerCase();
@@ -1264,8 +1267,9 @@ function imageBytes(body) {
 
 // Decode every accepted format, auto-orient it, bound the long edge, and emit a
 // metadata-free WebP. Sharp's pixel limit is applied before decoding so a tiny
-// compressed bomb cannot allocate an unbounded raster. Animated inputs are
-// rejected rather than silently flattening a frame the user did not choose.
+// compressed bomb cannot allocate an unbounded raster. Animated inputs are kept
+// as animated WebP; flattening them would silently discard the movement the user
+// uploaded.
 async function normalizeImage(image) {
   if (TEST_IMAGE_DELAY_MS) await new Promise(resolve => setTimeout(resolve, TEST_IMAGE_DELAY_MS));
   let metadata;
@@ -1280,36 +1284,52 @@ async function normalizeImage(image) {
     throw imageError('IMAGE_DECODE', 'image could not be decoded');
   }
   const width = Number(metadata?.width || 0);
-  const height = Number(metadata?.height || 0);
-  if (!width || !height) throw imageError('IMAGE_DIMENSIONS', 'image dimensions are missing');
-  if (width * height > IMAGE_MAX_PIXELS) throw imageError('IMAGE_DIMENSIONS', 'image dimensions exceed 25 megapixels');
-  if (Number(metadata?.pages || 1) > 1) throw imageError('IMAGE_ANIMATED', 'animated images are not supported');
+  const pages = Number(metadata?.pages || 1);
+  const pageHeight = Number(metadata?.pageHeight || metadata?.height || 0);
+  if (!width || !pageHeight || !Number.isSafeInteger(pages) || pages < 1) throw imageError('IMAGE_DIMENSIONS', 'image dimensions are missing');
+  if (pages > IMAGE_MAX_ANIMATION_FRAMES) throw imageError('IMAGE_FRAMES', 'animated image has too many frames');
+  const decodedPixels = width * pageHeight * pages;
+  if (!Number.isSafeInteger(decodedPixels) || decodedPixels > IMAGE_MAX_PIXELS) {
+    throw imageError('IMAGE_DIMENSIONS', 'image dimensions exceed 25 megapixels');
+  }
+  const animated = pages > 1;
 
   let bytes;
   try {
     bytes = await sharp(image.bytes, {
-      limitInputPixels: IMAGE_MAX_PIXELS, failOn: 'error', animated: false
+      limitInputPixels: IMAGE_MAX_PIXELS, failOn: 'error', animated
     }).rotate().resize({
       width: IMAGE_MAX_EDGE, height: IMAGE_MAX_EDGE, fit: 'inside', withoutEnlargement: true
-    }).webp({ quality: 90, effort: 4 }).toBuffer();
+    }).webp({
+      quality: 90, effort: 4,
+      ...(animated ? { loop: Number(metadata.loop || 0), delay: metadata.delay } : {})
+    }).toBuffer();
   } catch (error) {
     if (/pixel|dimension|limit/i.test(String(error?.message || ''))) {
       throw imageError('IMAGE_DIMENSIONS', 'image dimensions exceed 25 megapixels');
     }
     throw imageError('IMAGE_DECODE', 'image could not be decoded');
   }
-  if (!bytes.length || bytes.length > IMAGE_MAX_OUTPUT_BYTES) {
-    throw imageError('IMAGE_OUTPUT', 'normalized image exceeds 2 MiB');
+  const outputLimit = animated ? IMAGE_MAX_ANIMATION_OUTPUT_BYTES : IMAGE_MAX_OUTPUT_BYTES;
+  if (!bytes.length || bytes.length > outputLimit) {
+    throw imageError('IMAGE_OUTPUT', `normalized image exceeds ${animated ? 4 : 2} MiB`);
   }
   let outputMetadata;
-  try { outputMetadata = await sharp(bytes, { limitInputPixels: IMAGE_MAX_PIXELS }).metadata(); }
+  try { outputMetadata = await sharp(bytes, { limitInputPixels: IMAGE_MAX_PIXELS, animated }).metadata(); }
   catch { throw imageError('IMAGE_OUTPUT', 'normalized image could not be verified'); }
   const outputWidth = Number(outputMetadata?.width || 0);
-  const outputHeight = Number(outputMetadata?.height || 0);
-  if (!outputWidth || !outputHeight || Math.max(outputWidth, outputHeight) > IMAGE_MAX_EDGE) {
+  const outputPages = Number(outputMetadata?.pages || 1);
+  const outputPageHeight = Number(outputMetadata?.pageHeight || outputMetadata?.height || 0);
+  const outputPixels = outputWidth * outputPageHeight * outputPages;
+  if (!outputWidth || !outputPageHeight || !Number.isSafeInteger(outputPages) || outputPages < 1 || outputPages > IMAGE_MAX_ANIMATION_FRAMES ||
+    !Number.isSafeInteger(outputPixels) || outputPixels > IMAGE_MAX_PIXELS || outputWidth > IMAGE_MAX_EDGE || outputPageHeight > IMAGE_MAX_EDGE ||
+    (animated && outputPages !== pages)) {
     throw imageError('IMAGE_OUTPUT', 'normalized image dimensions are invalid');
   }
-  return { mime: 'image/webp', bytes, width: outputWidth, height: outputHeight };
+  if (animated && (!Array.isArray(outputMetadata.delay) || outputMetadata.delay.length !== outputPages)) {
+    throw imageError('IMAGE_OUTPUT', 'normalized animation timing is invalid');
+  }
+  return { mime: 'image/webp', bytes, width: outputWidth, height: outputPageHeight, animated, frames: outputPages };
 }
 
 function assetUsage(uid) {
@@ -2455,7 +2475,7 @@ const routes = {
       image = await withImageProcessing(() => normalizeImage(imageBytes(body)));
     } catch (e) {
       reportImageStats();
-      const status = e.code === 'IMAGE_OUTPUT' || e.code === 'IMAGE_QUOTA' ? 413 : 400;
+      const status = e.code === 'IMAGE_OUTPUT' || e.code === 'IMAGE_QUOTA' || e.code === 'IMAGE_FRAMES' ? 413 : 400;
       if (e.code === 'IMAGE_BUSY') {
         res.setHeader('Retry-After', '1');
         return json(res, 429, { error: e.message, code: e.code });
@@ -2478,7 +2498,7 @@ const routes = {
       try {
         durableAtomicWrite(assetFile(user.id, id), image.bytes, 0o600);
         reportImageStats();
-        json(res, 201, { asset: { id, mime: image.mime, size: image.bytes.length, sha256: hash } });
+        json(res, 201, { asset: { id, mime: image.mime, size: image.bytes.length, sha256: hash, width: image.width, height: image.height, ...(image.animated ? { animated: true, frames: image.frames } : {}) } });
       } catch (e) { storageFailure(res, e); }
     });
   },
@@ -2963,7 +2983,7 @@ async function uploadMcpExerciseImage(req, res, id) {
       image = imageBytes(body);
       normalized = await withImageProcessing(() => normalizeImage(image));
     } catch (error) {
-      const status = error?.code === 'IMAGE_BUSY' ? 429 : error?.code === 'IMAGE_TYPE' ? 415 : error?.code === 'IMAGE_SIZE' || error?.code === 'IMAGE_OUTPUT' || error?.code === 'IMAGE_DIMENSIONS' ? 413 : 400;
+      const status = error?.code === 'IMAGE_BUSY' ? 429 : error?.code === 'IMAGE_TYPE' ? 415 : error?.code === 'IMAGE_SIZE' || error?.code === 'IMAGE_OUTPUT' || error?.code === 'IMAGE_DIMENSIONS' || error?.code === 'IMAGE_FRAMES' ? 413 : 400;
       return json(res, status, { error: error.message || 'image could not be processed', code: error.code || 'IMAGE_INVALID' });
     }
     let usage;
@@ -2974,7 +2994,8 @@ async function uploadMcpExerciseImage(req, res, id) {
     const media = {
       id: assetId, mime: normalized.mime, size: normalized.bytes.length,
       sha256: crypto.createHash('sha256').update(normalized.bytes).digest('hex'),
-      width: normalized.width, height: normalized.height
+      width: normalized.width, height: normalized.height,
+      ...(normalized.animated ? { animated: true, frames: normalized.frames } : {})
     };
     try { durableAtomicWrite(assetFile(grant.uid, assetId), normalized.bytes, 0o600); }
     catch (error) { return storageFailure(res, error); }

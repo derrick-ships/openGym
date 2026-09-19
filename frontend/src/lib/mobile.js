@@ -187,6 +187,27 @@ export async function shareExport(json, filename) {
   await Share.share({ title: filename, url: w.uri })
 }
 
+// The same native share route for binary exports (the body-map PNG). Capacitor's
+// Filesystem accepts base64 for binary data; keeping this beside shareExport means
+// web callers can continue using the browser's normal blob download.
+export async function shareBlob(blob, filename) {
+  const { Filesystem, Directory } = await import('@capacitor/filesystem')
+  const { Share } = await import('@capacitor/share')
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const value = String(reader.result || '')
+      const comma = value.indexOf(',')
+      if (comma < 0) reject(new Error('binary export encoding failed'))
+      else resolve(value.slice(comma + 1))
+    }
+    reader.onerror = () => reject(reader.error || new Error('binary export encoding failed'))
+    reader.readAsDataURL(blob)
+  })
+  const w = await Filesystem.writeFile({ path: filename, directory: Directory.Cache, data: base64 })
+  await Share.share({ title: filename, url: w.uri })
+}
+
 export async function shareText(title, text) {
   if (!MOBILE && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     return navigator.share({ title, text })

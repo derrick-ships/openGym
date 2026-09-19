@@ -682,7 +682,7 @@ export function removeRowAt(rows, i) {
 /** Completed non-warm-up sets across a workout's entries. */
 export function workSetsDone(w) {
   return (w?.entries || []).reduce(
-    (n, e) => n + (e.sets || []).filter(s => s.done && !isWarmupRow(s)).length, 0,
+    (n, e) => n + (e.sets || []).reduce((m, s) => m + (isWarmupRow(s) ? 0 : doneUnits(s)), 0), 0,
   )
 }
 

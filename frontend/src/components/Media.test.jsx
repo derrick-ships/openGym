@@ -25,6 +25,7 @@ vi.mock('../store/useStore.js', () => {
 })
 
 const EX = { id: 'bench', n: 'bench press', gif: 'bench.gif', img: 'bench.jpg' }
+const PRIVATE_ANIMATED_EX = { id: 'custom-gif', n: 'custom gif', media: { id: 'asset-gif', mime: 'image/webp', animated: true, frames: 2 } }
 
 let host, root
 beforeEach(() => {
@@ -39,6 +40,7 @@ afterEach(() => {
 })
 
 const mount = props => act(() => root.render(<Media ex={EX} {...props} />))
+const mountEx = (ex, props) => act(() => root.render(<Media ex={ex} {...props} />))
 
 describe('Media gifSize', () => {
   it('renders the full animation by default and toggles to mini in the workout', () => {
@@ -70,5 +72,23 @@ describe('Media gifSize', () => {
     mount({ minimizable: true })
     expect(host.querySelector('.exmedia img')).toBeTruthy()
     expect(host.querySelector('.exmedia.mini')).toBeFalsy()
+  })
+
+  it('pauses a private animated image on a captured frame and resumes the animation', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() })
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,still')
+    mountEx(PRIVATE_ANIMATED_EX)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    const image = host.querySelector('.exmedia img')
+    Object.defineProperty(image, 'naturalWidth', { configurable: true, value: 32 })
+    Object.defineProperty(image, 'naturalHeight', { configurable: true, value: 32 })
+    expect(host.querySelector('.gifhint')).toBeTruthy()
+    expect(host.querySelector('.gifhint').getAttribute('aria-pressed')).toBe('false')
+    act(() => { host.querySelector('.gifhint').click() })
+    expect(host.querySelector('.exmedia img').src).toContain('data:image/png;base64,still')
+    expect(host.querySelector('.gifhint').getAttribute('aria-pressed')).toBe('true')
+    act(() => { host.querySelector('.gifhint').click() })
+    expect(host.querySelector('.exmedia img').src).toContain('/api/assets/asset-gif')
+    expect(host.querySelector('.gifhint').getAttribute('aria-pressed')).toBe('false')
   })
 })

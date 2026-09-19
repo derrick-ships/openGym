@@ -7,7 +7,7 @@
 // map can actually draw, via ALIAS below. Anything genuinely undrawable (hands,
 // ankles, "cardiovascular system") maps to null and is dropped rather than guessed at.
 
-import { isWarmupRow } from './workout-model.js'
+import { isSideSet, isWarmupRow } from './workout-model.js'
 import { EXIDX, smOf } from './exercises.js'
 import { todayISO, weekKey, MONDAY } from './format.js'
 
@@ -256,9 +256,18 @@ export function loadOf(items) {
  * question from where the sets went: a muscle can lead on volume and still never be trained
  * near failure.
  */
+const completedMuscleSets = (sets, pick) => (sets || []).reduce((n, set) => {
+  if (isWarmupRow(set) || (pick && !pick(set))) return n
+  // A unilateral row is one planned set, but its two completion ticks are independent. A
+  // half-finished row should shade half as much as a fully completed one, rather than silently
+  // disappearing because the aggregate `done` flag stays false until both sides are checked.
+  if (isSideSet(set)) return n + ((set.sides.L.done ? 1 : 0) + (set.sides.R.done ? 1 : 0)) / 2
+  return n + (set.done ? 1 : 0)
+}, 0)
+
 export const loadOfWorkouts = (workouts, pick) =>
   loadOf((workouts || []).flatMap(w =>
-    (w.entries || []).map(e => ({ id: e.id, ex: e.exercise || e, sets: (e.sets || []).filter(s => s.done && !isWarmupRow(s) && (!pick || pick(s))).length }))))
+    (w.entries || []).map(e => ({ id: e.id, ex: e.exercise || e, sets: completedMuscleSets(e.sets, pick) }))))
 
 /**
  * Workouts in one existing Muscle balance range, with time injected for deterministic tests.
@@ -280,7 +289,7 @@ export const loadOfRoutine = routine =>
 
 /** Load for a workout still in progress — the sets ticked so far. */
 export const loadOfActive = active =>
-  loadOf((active?.entries || []).map(e => ({ id: e.id, ex: e.exercise || e, sets: (e.sets || []).filter(s => s.done && !isWarmupRow(s)).length })))
+  loadOf((active?.entries || []).map(e => ({ id: e.id, ex: e.exercise || e, sets: completedMuscleSets(e.sets) })))
 
 /**
  * Shade buckets 0–4 per muscle.

@@ -398,8 +398,8 @@ function makeServer(token, grantedScopes = []) {
     schema: { exercise_id: z.string().min(1).max(120), changes: exercisePatchSchema, revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ exercise_id }) => `/api/mcp/exercises/${encodeURIComponent(exercise_id)}`, bodyFor: ({ changes }) => ({ changes })
   })
   registerWriter({
-    name: 'upload_exercise_image', scope: 'image:write', revisionRequired: true, description: 'Upload or replace a private custom-exercise image. Send base64 image data (jpeg/png/webp); the server normalizes it, checks ownership/quota/checksum, and never exposes a public URL. Pass the revision returned by an exercise read so a concurrent replacement cannot win silently.',
-    schema: { exercise_id: z.string().min(1).max(120), mime: z.enum(['image/jpeg', 'image/png', 'image/webp']), data: z.string().min(1).max(14 * 1024 * 1024), revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ exercise_id }) => `/api/mcp/exercises/${encodeURIComponent(exercise_id)}/image`, bodyFor: ({ mime, data }) => ({ mime, data })
+    name: 'upload_exercise_image', scope: 'image:write', revisionRequired: true, description: 'Upload or replace a private custom-exercise image. Send base64 image data (jpeg/png/webp/gif); animated GIFs are retained as animated WebP, while the server checks ownership/quota/checksum and never exposes a public URL. Pass the revision returned by an exercise read so a concurrent replacement cannot win silently.',
+    schema: { exercise_id: z.string().min(1).max(120), mime: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']), data: z.string().min(1).max(14 * 1024 * 1024), revision: z.string().min(1).max(200), request_id: z.string().min(1).max(200) }, pathFor: ({ exercise_id }) => `/api/mcp/exercises/${encodeURIComponent(exercise_id)}/image`, bodyFor: ({ mime, data }) => ({ mime, data })
   })
   registerWriter({
     name: 'create_equipment_profile', scope: 'equipment:write', description: 'Create an equipment profile using the same catalogue equipment identifiers as the app. Set active=true to select it in the exercise picker.',

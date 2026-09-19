@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import BodyMap, { BodyMapLegend } from './BodyMap.jsx'
+import BodyMap, { BodyMapLegend, bodyMapPngBlob, bodyMapSvg } from './BodyMap.jsx'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -66,5 +66,61 @@ describe('BodyMap interaction semantics', () => {
   it('labels the existing legend direction for assistive technology', () => {
     act(() => root.render(<BodyMapLegend />))
     expect(container.querySelector('.hm-legend').getAttribute('aria-label')).toBe('Less More')
+  })
+
+  it('exports both rendered views with the title and every affected muscle label', () => {
+    const host = document.createElement('div')
+    host.innerHTML = `
+      <svg class="bm-v" viewBox="0 0 10 20"><path class="bm-sil" d="M0 0h1v1z"></path><path class="bm-m l4" d="M1 1h1v1z"></path></svg>
+      <svg class="bm-v" viewBox="0 0 10 20"><path class="bm-sil" d="M0 0h1v1z"></path><path class="bm-m l2" d="M1 1h1v1z"></path></svg>`
+    document.body.appendChild(host)
+
+    const output = bodyMapSvg(host, { title: 'Leg day', labels: ['Quads', 'Hamstrings', 'Glutes'] })
+
+    expect(output).toContain('<title>Leg day</title>')
+    expect(output).toContain('Front')
+    expect(output).toContain('Back')
+    expect(output).toContain('Quads')
+    expect(output).toContain('Hamstrings')
+    expect(output).toContain('Glutes')
+    expect(output).toContain('viewBox="0 0 10 20"')
+    expect(output).toContain('fill=')
+    host.remove()
+  })
+
+  it('fails closed until both body views have rendered', () => {
+    const host = document.createElement('div')
+    host.innerHTML = '<svg class="bm-v" viewBox="0 0 10 20"></svg>'
+    expect(() => bodyMapSvg(host, { title: 'Incomplete' })).toThrow(/two body views/i)
+  })
+
+  it('rasterizes the rendered map into a non-empty PNG blob', async () => {
+    const host = document.createElement('div')
+    host.innerHTML = `
+      <svg class="bm-v" viewBox="0 0 10 20"><path class="bm-sil" d="M0 0h1v1z"></path><path class="bm-m l4" d="M1 1h1v1z"></path></svg>
+      <svg class="bm-v" viewBox="0 0 10 20"><path class="bm-sil" d="M0 0h1v1z"></path><path class="bm-m l2" d="M1 1h1v1z"></path></svg>`
+    document.body.appendChild(host)
+    const OriginalImage = globalThis.Image
+    const originalCreateElement = document.createElement.bind(document)
+    class FakeImage {
+      set src(value) { this._src = value; queueMicrotask(() => this.onload?.()) }
+      get src() { return this._src }
+    }
+    const context = { drawImage: vi.fn() }
+    const canvas = {
+      width: 0, height: 0,
+      getContext: () => context,
+      toBlob: callback => callback(new Blob(['png-bytes'], { type: 'image/png' })),
+    }
+    globalThis.Image = FakeImage
+    const createElement = vi.spyOn(document, 'createElement').mockImplementation(tag => tag === 'canvas' ? canvas : originalCreateElement(tag))
+
+    const blob = await bodyMapPngBlob(host, { title: 'Leg day', labels: ['Quads'] })
+    expect(blob.type).toBe('image/png')
+    expect(blob.size).toBeGreaterThan(0)
+
+    createElement.mockRestore()
+    globalThis.Image = OriginalImage
+    host.remove()
   })
 })

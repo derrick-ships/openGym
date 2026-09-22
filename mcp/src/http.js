@@ -349,6 +349,7 @@ function makeServer(token, grantedScopes = []) {
   }).strict()
   const routineSchema = z.object({
     name: z.string().min(1).max(100), emoji: z.string().max(32).nullable().optional(),
+    kind: z.enum(['workout', 'stretching']).optional(),
     prog: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).optional(),
     excludeFromProgression: z.boolean().optional(), ex: z.array(routineEntrySchema).max(100).optional()
   }).strict()
@@ -360,6 +361,7 @@ function makeServer(token, grantedScopes = []) {
   }).strict()
   const routinePatchSchema = z.object({
     name: z.string().min(1).max(100).optional(), emoji: z.string().max(32).nullable().optional(),
+    kind: z.enum(['workout', 'stretching']).nullable().optional(),
     prog: z.enum(['off', 'linear', 'greyskull', 'double', 'time']).nullable().optional(),
     excludeFromProgression: z.boolean().nullable().optional(), ex: z.array(routineEntryPatchSchema).max(100).optional()
   }).strict()
@@ -463,6 +465,8 @@ function makeServer(token, grantedScopes = []) {
       end: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
       routineIds: z.array(z.string().min(1).max(120)).max(50).optional().describe('Profile routine IDs represented by entries.'),
       routineId: z.string().min(1).max(120).nullable().optional().describe('Optional primary routine ID; must be in routineIds.'),
+      kind: z.enum(['stretching']).optional().describe('Session kind snapshot. Omitted means a normal workout.'),
+      routineKinds: z.record(z.enum(['workout', 'stretching'])).optional().describe('Routine kind snapshots keyed by routine ID.'),
       name: z.string().max(120).nullable().optional(),
       bw: z.number().finite().min(0).max(1000).nullable().optional().describe('Bodyweight at the session.'),
       note: z.string().max(2000).nullable().optional(),

@@ -47,6 +47,19 @@ describe('beginWorkout with a routine-id list', () => {
     expect(a.entries.every(e => e.rid === 'strength')).toBe(true)
   })
 
+  it('snapshots stretching kind while legacy and mixed sessions stay normal', () => {
+    useStore.setState(s => ({ S: { ...s.S, routines: s.S.routines.map(r => r.id === 'strength' ? { ...r, kind: 'stretching' } : r) } }))
+    act(() => beginWorkout(['strength'], null))
+    expect(useStore.getState().S.active).toMatchObject({ kind: 'stretching', routineKinds: { strength: 'stretching' } })
+    install([
+      { id: 'stretch', name: 'Stretch', kind: 'stretching', ex: [{ id: ids[0], sets: 1, reps: 1 }] },
+      { id: 'lift', name: 'Lift', ex: [{ id: ids[1], sets: 1, reps: 1 }] },
+    ])
+    act(() => beginWorkout(['stretch', 'lift'], null))
+    expect(useStore.getState().S.active).not.toHaveProperty('kind')
+    expect(useStore.getState().S.active.routineKinds).toEqual({ stretch: 'stretching', lift: 'workout' })
+  })
+
   it('an empty list is a freestyle session — no entries, no rid', () => {
     act(() => beginWorkout([], null))
     const a = useStore.getState().S.active

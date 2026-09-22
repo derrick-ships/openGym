@@ -1,5 +1,9 @@
 // Spanish UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  'Stretching': 'Estiramientos',
+  'New stretching': 'Nuevo de estiramientos',
+  'New stretching routine': 'Nueva rutina de estiramientos',
+  'Routine type': 'Tipo de rutina',
   'Confirm': 'Confirmar',
   'Cancel': 'Cancelar',
   'Press back again to exit': 'Pulsa atrás otra vez para salir',

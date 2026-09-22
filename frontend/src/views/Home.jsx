@@ -10,6 +10,7 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf } from '../lib/glyphs.js'
+import { sessionKind } from '../lib/routine-kind.js'
 
 export function todayAction({ active, doneToday, routineIds, onResume, onDetail, onStart, onRest }) {
   if (active) return onResume()
@@ -95,21 +96,21 @@ export default function Home() {
           row keeps working, so a second session in one day is a tap away, just not urged. */}
       <div className="today-row" {...tappable(onToday)}>
         <div className="row" style={{ gap: 9, minWidth: 0 }}>
-          <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : doneToday ? 'var(--surface-3)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
+            <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : doneToday ? 'var(--surface-3)' : routine ? (sessionKind(todayRoutines) === 'stretching' ? 'var(--blue)' : 'var(--acc)') : 'var(--surface-3)' }}>
             <Icon name={S.active ? 'timer' : doneToday ? 'checkCircle' : routine ? glyphOf(routine.emoji) : 'moon'}
               style={doneToday && !S.active ? { color: 'var(--green)' } : undefined} />
           </span>
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
-            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name)
-              : doneToday ? (doneToday.name ? t('{0} — done', doneToday.name) : t('Workout done'))
+            <div className="ttl">{S.active ? <>{t('{0} — in progress', S.active.name)}{S.active.kind === 'stretching' && <span className="tag stretch-kind" style={{ marginLeft: 6 }}>{t('Stretching')}</span>}</>
+              : doneToday ? <>{doneToday.name ? t('{0} — done', doneToday.name) : t('Workout done')}{doneToday.kind === 'stretching' && <span className="tag stretch-kind" style={{ marginLeft: 6 }}>{t('Stretching')}</span>}</>
               : routine ? todayName : t('Rest day')}{todayOvr && routine && !doneToday ? ' · ' + t('rescheduled') : ''}</div>
             {next && !doneToday && <div className="ss">{t('Next session: {0}, {1}', t(DAYN[next.weekday]), next.routine.name)}</div>}
           </div>
         </div>
         {S.active ? <span className="tag" style={{ color: 'var(--orange)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{t('Resume')}</span>
           : doneToday ? <span className="tag" style={{ color: 'var(--green)', background: 'color-mix(in srgb,var(--green) 16%,transparent)' }}>{t('Done')}</span>
-          : routine ? <span className="tag acc">{t('Start')}</span>
+          : routine ? <span className={'tag' + (sessionKind(todayRoutines) === 'stretching' ? ' stretch-kind' : ' acc')}>{sessionKind(todayRoutines) === 'stretching' ? t('Stretching') : t('Start')}</span>
           : <Icon name="plus" className="chev" />}
       </div>
     </div>

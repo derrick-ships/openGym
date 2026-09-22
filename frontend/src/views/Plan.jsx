@@ -10,6 +10,7 @@ import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
 import { coachAvailable } from '../lib/coach.js'
+import { routineKind } from '../lib/routine-kind.js'
 
 export default function Plan() {
   const nav = useNavigate()
@@ -25,8 +26,8 @@ export default function Plan() {
      an instance without the feature sees exactly the Plan screen it saw before. */
   const showCoach = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE, coachMode })
 
-  const addRoutine = () => {
-    const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
+  const addRoutine = (kind = 'workout') => {
+    const r = { id: uid(), name: t(kind === 'stretching' ? 'New stretching routine' : 'New routine'), emoji: DEFAULT_GLYPH, ...(kind === 'stretching' ? { kind } : {}), ex: [] }
     update(s => { s.routines.push(r) })
     nav('/plan/r/' + r.id)
   }
@@ -70,6 +71,7 @@ export default function Plan() {
             {dayRoutines.map(r => <div key={r.id} className="row" style={{ gap: 8, padding: '4px 0 4px 8px' }}>
               <span className="lrow-i" style={{ width: 26, height: 26, fontSize: 14 }}><Icon name={glyphOf(r.emoji)} /></span>
               <div className="grow" style={{ minWidth: 0 }}><div className="tt" style={{ fontSize: 14 }}>{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+              {routineKind(r) === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
               <button className="iconbtn sm" aria-label={t('Remove')} onClick={() => removeFromDay(d, r.id)}><Icon name="xmark" /></button>
             </div>)}
             <button className="btn ghost sm" style={{ marginTop: 4, marginLeft: 8 }} onClick={() => dayAddRoutineSheet(d)}>
@@ -81,11 +83,15 @@ export default function Plan() {
     </div><div>
       <div className="row between" style={{ marginTop: 22, marginBottom: 10 }}>
         <h4 className="sec" style={{ margin: 0 }}>{t('Routines')}</h4>
-        <Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button>
+        <div className="row" style={{ gap: 6 }}>
+          <Button size="sm" variant="tinted" icon="plus" onClick={() => addRoutine()}>{t('New')}</Button>
+          <Button size="sm" variant="ghost" icon="stretch" onClick={() => addRoutine('stretching')}>{t('New stretching')}</Button>
+        </div>
       </div>
       {S.routines.length ? <div className="list">{S.routines.map(r => <div key={r.id} className="item" {...tappable(() => nav('/plan/r/' + r.id))}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        {routineKind(r) === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
         <Icon name="chevronRight" className="chev" /></div>)}</div> : <>
         <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}</div>
         <Button icon="sparkles" onClick={starterPlanSheet}>{t('Load starter plan')}</Button>

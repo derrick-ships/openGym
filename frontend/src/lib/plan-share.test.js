@@ -41,6 +41,16 @@ describe('what survives a shared plan', () => {
     expect(target.routines[0].excludeFromProgression).toBe(true)
   })
 
+  it('carries the stretching kind through export and import while old plans stay regular', () => {
+    const source = stateWith({})
+    source.routines[0].kind = 'stretching'
+    const bundle = parsePlan(buildPlanBundle(source, 'Plan'))
+    const target = { routines: [], week: {}, customEx: [] }
+    mergePlan(target, bundle)
+    expect(target.routines[0].kind).toBe('stretching')
+    expect(parsePlan(JSON.stringify({ opengym_plan: 1, routines: [{ id: 'old', name: 'Old', ex: [] }], customEx: [], week: {} })).routines[0]).not.toHaveProperty('kind')
+  })
+
   // Issue #10: the rest an exercise prescribes is part of the prescription. A shared 5x5 whose
   // rests arrive as the recipient's 60 s default is a different session than the one written.
   it('carries a per-exercise rest', () => {

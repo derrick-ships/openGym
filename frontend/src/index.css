@@ -425,6 +425,11 @@ h4.sec{
   font-weight:500;text-transform:capitalize;
 }
 .tag.acc{background:var(--acc-soft);color:var(--acc)}
+.tag.stretch-kind{background:color-mix(in srgb,var(--stretch-accent) 16%,transparent);color:var(--stretch-accent)}
+.whdr.stretching .wprog i{background:var(--blue)}
+:root{--stretch-accent:#0a84ff;--stretch-acc-2:#0060df;--stretch-button-label:#000}
+:root[data-theme="light"]{--stretch-accent:#005fbd;--stretch-acc-2:#004a94;--stretch-button-label:#fff}
+.stretching-routine,.stretching-workout{--acc:var(--stretch-accent);--acc-2:var(--stretch-acc-2);--on-acc:var(--stretch-button-label);--acc-soft:color-mix(in srgb,var(--stretch-accent) 16%,transparent)}
 /* favourite marker (issue #6): a small yellow star glued to the exercise name — distinct from
    the accent "chosen" tag at the row's end, which means "already in a routine or the log" */
 .fav-star{color:var(--yellow);font-size:12px;display:inline-block;margin-right:5px;vertical-align:-1px}

@@ -167,6 +167,7 @@ export const listRoutines = {
       routines: (S.routines || []).map(r => ({
         id: r.id,
         name: r.name,
+        kind: r.kind === 'stretching' ? 'stretching' : 'workout',
         emoji: r.emoji || null,
         exercise_count: (r.ex || []).length,
         superset_groups: [...new Set((r.ex || []).map(e => e.sg).filter(Boolean))].length || 0,
@@ -190,6 +191,7 @@ export const getRoutine = {
     return {
       id: r.id,
       name: r.name,
+      kind: r.kind === 'stretching' ? 'stretching' : 'workout',
       emoji: r.emoji || null,
       policy: policyFor(null, r, 'reps'),
       policy_name: policyName(policyFor(null, r, 'reps')),

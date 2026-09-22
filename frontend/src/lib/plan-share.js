@@ -98,6 +98,7 @@ function cleanIntensifier(x) {
 export function buildPlanBundle(S, name) {
   const routines = (S.routines || []).map(r => ({
     id: r.id, name: r.name, emoji: r.emoji,
+    ...(r.kind === 'stretching' ? { kind: 'stretching' } : {}),
     ...(r.prog ? { prog: r.prog } : {}),
     ...(r.excludeFromProgression === true ? { excludeFromProgression: true } : {}),
     ex: (r.ex || []).map(cleanEx)
@@ -185,6 +186,7 @@ export function mergePlan(s, bundle, { schedule } = {}) {
       id: nid,
       name: r.name || t('Shared routine'),
       emoji: r.emoji,
+      ...(r.kind === 'stretching' ? { kind: 'stretching' } : {}),
       ...(r.prog ? { prog: r.prog } : {}),
       ...(r.excludeFromProgression === true ? { excludeFromProgression: true } : {}),
       ex: (r.ex || []).map(e => ({ ...e, id: exIdMap[e.id] || e.id }))

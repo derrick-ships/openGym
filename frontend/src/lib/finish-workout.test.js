@@ -34,6 +34,18 @@ describe('completed workout boundary', () => {
     expect(freestyle.routineId).toBe(null)
   })
 
+  it('preserves stretching context snapshots on completed sessions', () => {
+    const base = {
+      id: 'stretch-session', d: '2026-08-08', start: 1, routineIds: ['stretch', 'lift'],
+      kind: 'stretching', routineKinds: { stretch: 'stretching', lift: 'workout' },
+      entries: [{ id: '0025', sets: [{ done: true, w: 1, r: 1 }] }],
+    }
+    expect(buildCompletedWorkout(base)).toMatchObject({
+      kind: 'stretching', routineKinds: { stretch: 'stretching', lift: 'workout' },
+    })
+    expect(buildCompletedWorkout({ ...base, kind: undefined })).not.toHaveProperty('kind')
+  })
+
   it('carries per-entry rid and noProg onto the saved entry, written only when set', () => {
     const active = {
       id: 'w', d: '2026-08-08', start: 1, routineIds: ['strength', 'rehab'],

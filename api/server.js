@@ -239,7 +239,7 @@ const WORKOUT_SET_FIELDS = new Set(['done', 'w', 'r', 'sec', 'min', 'speed', 'ri
 const WORKOUT_TARGET_NUMERIC = new Set(['sets', 'reps', 'repsMin', 'repsMax', 'sec', 'min', 'speed', 'weight', 'inc', 'bw', 'restSec', 'deloadFactor']);
 const WORKOUT_TARGET_TEXT = new Set(['mode', 'sg', 'policy', 'prog', 'note']);
 const WORKOUT_ENTRY_FIELDS = new Set(['id', 'sets', 'target', 'rid', 'noProg', 'note', 'notePin', 'topW']);
-const WORKOUT_FIELDS = new Set(['id', 'd', 'start', 'end', 'routineIds', 'routineId', 'name', 'bw', 'note', 'entries', 'prs', 'vol', 'backfill', 'excludeFromProgression']);
+const WORKOUT_FIELDS = new Set(['id', 'd', 'start', 'end', 'routineIds', 'routineId', 'routineKinds', 'kind', 'name', 'bw', 'note', 'entries', 'prs', 'vol', 'backfill', 'excludeFromProgression']);
 
 function workoutDate(value) {
   const text = String(value || '');
@@ -510,6 +510,10 @@ function cleanCompletedWorkout(input, state) {
   if (!Array.isArray(routineIds) || routineIds.length > 50 || routineIds.some(value => !isSafeId(value))) return { error: 'workout routine ids are invalid' };
   const routineSet = new Set(Array.isArray(state?.routines) ? state.routines.map(routine => String(routine?.id || '')) : []);
   if (routineIds.some(value => !routineSet.has(String(value)))) return { error: 'workout routine ids are invalid' };
+  const routineKinds = input.routineKinds == null ? null : input.routineKinds;
+  if (input.kind != null && input.kind !== 'stretching') return { error: 'workout kind is invalid' };
+  if (routineKinds != null && (!routineKinds || typeof routineKinds !== 'object' || Array.isArray(routineKinds)
+    || Object.entries(routineKinds).some(([id, kind]) => !routineIds.includes(id) || !['workout', 'stretching'].includes(kind)))) return { error: 'workout routine kinds are invalid' };
   const name = input.name == null ? null : workoutText(input.name, WORKOUT_MAX_NAME);
   if (input.name != null && name == null) return { error: 'workout name is invalid' };
   const bw = input.bw == null ? null : workoutNumber(input.bw, { min: 0, max: 1000 });
@@ -532,6 +536,8 @@ function cleanCompletedWorkout(input, state) {
     workout: {
       id, d: date, ...(start != null ? { start } : {}), ...(end != null ? { end } : {}),
       routineIds: routineIds.map(String), routineId: routineId == null ? null : String(routineId),
+      ...(input.kind === 'stretching' ? { kind: input.kind } : {}),
+      ...(routineKinds ? { routineKinds: { ...routineKinds } } : {}),
       name, bw, entries, prs: [], vol: metrics.vol,
       ...(allNoProg ? { excludeFromProgression: true } : {}), ...(note ? { note } : {})
     }, backfill: input.backfill === true
@@ -796,7 +802,7 @@ function requireGrant(req, res, scope) {
 const MCP_DEFAULT_STATE = () => ({
   unit: 'kg', routines: [], week: {}, dayPlan: {}, customEx: [], workouts: [], bodyweight: [], equipProfiles: []
 });
-const MCP_ROUTINE_FIELDS = new Set(['id', 'name', 'emoji', 'prog', 'excludeFromProgression', 'ex']);
+const MCP_ROUTINE_FIELDS = new Set(['id', 'name', 'emoji', 'kind', 'prog', 'excludeFromProgression', 'ex']);
 const MCP_ENTRY_FIELDS = new Set([
   'id', 'sets', 'mode', 'reps', 'repsMin', 'repsMax', 'sec', 'min', 'speed', 'weight', 'restSec',
   'warmupRestSec', 'note', 'warmupSets', 'bodyweight', 'side', 'intensifier', 'prog', 'inc', 'deloadFactor', 'sg', 'policy'
@@ -939,6 +945,11 @@ function normalizeMcpRoutine(value, state, { id = null, base = null } = {}) {
     out.name = name;
   }
   if (!mcpString(out.name, 100)) return mcpError('routine name is required');
+  if (Object.prototype.hasOwnProperty.call(value, 'kind')) {
+    if (value.kind == null || value.kind === 'workout') delete out.kind;
+    else if (value.kind === 'stretching') out.kind = value.kind;
+    else return mcpError('routine kind is invalid');
+  }
   if (Object.prototype.hasOwnProperty.call(value, 'emoji')) {
     if (value.emoji == null) { delete out.emoji; }
     else {

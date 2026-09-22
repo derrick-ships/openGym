@@ -372,7 +372,7 @@ export default function RoutineEdit() {
   const profile = activeProfile(S)
   const missingCount = profile ? r.ex.filter(e => !exAvailable(S, exOr(e.id))).length : 0
 
-  return <div className="narrow">
+  return <div className={'narrow' + (r.kind === 'stretching' ? ' stretching-routine' : '')}>
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Plan')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, margin: '0 12px' }}>
@@ -386,6 +386,9 @@ export default function RoutineEdit() {
       <SelectRow icon="chartLine" title={t('Progression')} sheetTitle={t('Progression')}
         value={r.prog || 'linear'} onChange={v => update(s => { s.routines.find(x => x.id === id).prog = v })}
         options={POLICIES_FOR.reps.map(p => ({ value: p, label: t(POLICY_NAME[p]), subtitle: t(POLICY_DESC[p]) }))} />
+      <SelectRow icon="stretch" title={t('Routine type')} value={r.kind === 'stretching' ? 'stretching' : 'workout'}
+        onChange={kind => update(s => { const routine = s.routines.find(x => x.id === id); if (kind === 'stretching') routine.kind = kind; else delete routine.kind })}
+        options={[{ value: 'workout', label: t('Workout') }, { value: 'stretching', label: t('Stretching') }]} />
       <Row icon="pause" iconTint="var(--orange)" title={t('Exclude from automatic progression')}
         subtitle={t('Use for planned deloads. Workouts stay in history and statistics.')}>
         <Switch checked={r.excludeFromProgression === true} onChange={v => update(s => {
@@ -470,7 +473,7 @@ export default function RoutineEdit() {
       }
       return <div className="card" style={{ marginTop: 12 }}>
         <h2>{t('What this session hits')}</h2>
-        <div ref={bodyMapRef}>
+        <div ref={bodyMapRef} className={r.kind === 'stretching' ? 'stretching-routine' : undefined}>
           <BodyMap load={load} body={S.body} onReady={() => setBodyMapReady(true)} />
         </div>
         <Button variant="tinted" size="sm" icon="download" onClick={downloadBodyMap} disabled={!bodyMapReady || bodyMapBusy}>

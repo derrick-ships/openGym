@@ -70,7 +70,7 @@ function fileManifest(root) {
   return rows
 }
 json('mcp-grants.json', { grants: [
-  { id: 'grant-a', uid, name: 'staging client', scopes: ['exercise:read', 'routine:read', 'workout:read', 'bodyweight:read', 'progress:read', 'routine:propose'], tokenHash: hash(grantToken), created: new Date().toISOString(), expires: Date.now() + 3600000 },
+  { id: 'grant-a', uid, name: 'staging client', scopes: ['exercise:read', 'routine:read', 'routine:write', 'workout:read', 'bodyweight:read', 'progress:read', 'routine:propose'], tokenHash: hash(grantToken), created: new Date().toISOString(), expires: Date.now() + 3600000 },
   { id: 'grant-exercise', uid, name: 'narrow client', scopes: ['exercise:read'], tokenHash: hash(exerciseGrant), created: new Date().toISOString(), expires: Date.now() + 3600000 },
   { id: 'grant-revoke', uid, name: 'revocation fixture', scopes: ['exercise:read'], tokenHash: hash(revokeGrant), created: new Date().toISOString(), expires: Date.now() + 3600000 },
   { id: 'grant-propose', uid, name: 'proposal-only fixture', scopes: ['routine:propose'], tokenHash: hash(proposeGrant), created: new Date().toISOString(), expires: Date.now() + 3600000 },
@@ -215,12 +215,36 @@ try {
     const listed = await call(3, 'tools/list', {}); assert.equal(listed.response.status, 200)
     const expectedTools = authToken === proposeGrant
       ? ['get_routine_proposal', 'propose_routine']
-      : ['estimate_1rm', 'get_bodyweight', 'get_exercise', 'get_routine', 'get_routine_proposal', 'get_week_plan', 'get_workout', 'list_exercises', 'list_routines', 'list_workouts', 'muscle_balance', 'preview_session', 'propose_routine', 'search_exercises']
+      : ['create_routine', 'edit_routine', 'estimate_1rm', 'get_bodyweight', 'get_exercise', 'get_routine', 'get_routine_proposal', 'get_week_plan', 'get_workout', 'list_exercises', 'list_routines', 'list_workouts', 'muscle_balance', 'preview_session', 'propose_routine', 'search_exercises']
     assert.deepEqual(listed.data.result.tools.map(tool => tool.name).sort(), expectedTools)
     return { sid, call }
   }
   const localClient = await mcpClient('local-fixture'); const hostedClient = await mcpClient('hosted-fixture')
   const proposalOnlyClient = await mcpClient('proposal-only-fixture', proposeGrant)
+  const createStretchRoutine = await localClient.call(110, 'tools/call', { name: 'create_routine', arguments: {
+    request_id: 'stretching-kind-create', routine: { name: 'Stretching kind fixture', kind: 'stretching', ex: [{ id: '0001', sets: 2, reps: 5 }] }
+  } })
+  const createdStretchRoutine = JSON.parse(createStretchRoutine.data.result?.content?.[0]?.text || '{}').routine
+  assert.equal(createdStretchRoutine?.kind, 'stretching', 'MCP routine create keeps stretching kind')
+  const invalidStretchRoutine = await localClient.call(111, 'tools/call', { name: 'create_routine', arguments: {
+    request_id: 'stretching-kind-invalid', routine: { name: 'Invalid kind fixture', kind: 'yoga', ex: [] }
+  } })
+  assert.equal(invalidStretchRoutine.data.result?.isError, true, 'MCP routine create rejects an invalid kind')
+  const stretchingRead = await localClient.call(112, 'tools/call', { name: 'get_routine', arguments: { routine_id: createdStretchRoutine.id } })
+  const stretchingBeforePatch = JSON.parse(stretchingRead.data.result?.content?.[0]?.text || '{}')
+  const clearStretchKind = await localClient.call(113, 'tools/call', { name: 'edit_routine', arguments: {
+    routine_id: createdStretchRoutine.id, changes: { kind: null }, revision: stretchingBeforePatch.revision, request_id: 'stretching-kind-clear'
+  } })
+  assert.equal(clearStretchKind.data.result?.isError, undefined, 'MCP routine patch accepts clearing kind')
+  const afterStretchKind = assertStatus(await request(apiBase, '/api/data', { headers: { Cookie: `gymsid=${session}` } }), 200, 'MCP stretching kind snapshot').data.state
+  const regularAfterPatch = afterStretchKind.routines.find(r => r.id === createdStretchRoutine.id)
+  assert.equal(regularAfterPatch?.name, 'Stretching kind fixture', 'kind-only patch preserves the routine name')
+  assert.deepEqual(regularAfterPatch?.ex, [{ id: '0001', sets: 2, reps: 5 }], 'kind-only patch preserves exercises')
+  assert.equal(Object.hasOwn(regularAfterPatch || {}, 'kind'), false, 'cleared routine kind returns to the legacy workout default')
+  print('gate3_stretching_routine_kind_create', 'PASS')
+  print('gate3_stretching_routine_invalid_kind_rejected', true)
+  print('gate3_stretching_kind_only_patch_preserves_name_exercises', true)
+  print('gate3_stretching_kind_clear_legacy_default', 'workout')
   // Traverse the same catalogue through the MCP tools (not only the API convenience endpoint).
   const mcpCatalog = []; let mcpOffset = 0
   while (true) {

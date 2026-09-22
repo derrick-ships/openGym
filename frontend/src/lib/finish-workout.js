@@ -46,6 +46,8 @@ export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snap
     end,
     routineIds,
     routineId: routineIds[0] ?? null,
+    ...(active?.kind === 'stretching' ? { kind: 'stretching' } : {}),
+    ...(active?.routineKinds ? { routineKinds: { ...active.routineKinds } } : {}),
     name: active.name,
     bw: active.bw,
     entries,

@@ -14,6 +14,11 @@ const routine = {
 }
 
 describe('copyRoutine', () => {
+  it('preserves routine kind when copied', () => {
+    const copy = copyRoutine({ ...routine, kind: 'stretching' })
+    expect(copy.kind).toBe('stretching')
+  })
+
   it('returns a new routine with a different id', () => {
     const copy = copyRoutine(routine)
     expect(copy.id).not.toBe(routine.id)

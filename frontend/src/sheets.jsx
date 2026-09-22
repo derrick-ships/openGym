@@ -39,6 +39,7 @@ import { useSheetKeyboard, useRevealActiveChip, tappable } from './lib/use-sheet
 import { isFav, toggleFav, sortFavouritesFirst } from './lib/favourites.js'
 import { buildSessionEntries } from './lib/session-start.js'
 import { buildCombinedEntries, deriveSessionName } from './lib/session-merge.js'
+import { routineKind, routineKindsOf, sessionKind, snapshotRoutineKinds } from './lib/routine-kind.js'
 import { workoutsOn, backfillStart, backfillEnd, completeBackfill } from './lib/backfill.js'
 
 const S = () => useStore.getState().S
@@ -1618,6 +1619,7 @@ function DayOverride({ iso, close }) {
       {st.routines.map(r => <div key={r.id} className="item" {...tappable(() => set(r.id))}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        {routineKind(r) === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
         {effIds.includes(r.id) && <Icon name="check" className="accent" />}</div>)}
       <div className="item" {...tappable(() => set('rest'))}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{effIds.length === 0 && <Icon name="check" className="accent" />}</div>
       {hasOvr && <div className="item" {...tappable(() => set(''))}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
@@ -1640,6 +1642,7 @@ function DayAssign({ day, close }) {
       {st.routines.map(r => <div key={r.id} className="item" {...tappable(() => set(r.id))}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        {routineKind(r) === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
         {cur.includes(r.id) && <Icon name="check" className="accent" />}</div>)}
     </div>
   </>
@@ -1661,6 +1664,7 @@ function DayAddRoutine({ day, close }) {
           {...tappable(already ? null : () => add(r.id))}>
           <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
           <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+          {routineKind(r) === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
           {already ? <span className="tag">{t('already added')}</span> : <Icon name="chevronRight" className="chev" />}
         </div>
       })}
@@ -1813,17 +1817,19 @@ function WorkoutDetail({ w, close }) {
     g.items.push([e, i])
   })
   const grouped = groups.length > 1 || (groups[0] && groups[0].rid && (w.routineIds || []).length > 1)
-  return <>
-    <h3>{w.name}</h3>
+  return <div className={w.kind === 'stretching' ? 'stretching-workout' : undefined}>
+    <h3>{w.name}{w.kind === 'stretching' && <span className="tag stretch-kind" style={{ marginLeft: 6 }}>{t('Stretching')}</span>}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
     {grouped ? groups.map(g => {
       const r = g.rid ? st.routines.find(x => x.id === g.rid) : null
       const setN = workSetsDone({ entries: g.items.map(([e]) => e) })
       const vol = workoutVolume({ entries: g.items.map(([e]) => e) })
+      const kind = w.routineKinds ? w.routineKinds[g.rid] : 'workout'
       return <div key={g.key}>
         <div className="row between" style={{ margin: '2px 0 8px', paddingBottom: 6, borderBottom: '1px solid var(--sep)' }}>
           <div className="row" style={{ gap: 7, fontWeight: 600 }}>
             {r && <Icon name={glyphOf(r.emoji)} />}{r ? r.name : t('Freestyle')}
+            {kind === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
           </div>
           <div className="small dim">{t('{0} sets', setN)} · {fmtVol(vol, st.unit)}</div>
         </div>
@@ -1837,7 +1843,7 @@ function WorkoutDetail({ w, close }) {
       onFocus={onNoteFocus} onChange={e => setNote(e.target.value)} onBlur={saveNote} />
     <div style={{ height: 14 }} />
     <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
-  </>
+  </div>
 }
 export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />)
 
@@ -1888,11 +1894,14 @@ export const calendarSheet = start => ui().openSheet(close => <Calendar start={s
 /* shared small workout row (used in lists) */
 export function WorkoutRow({ w, onClick }) {
   const st = useStore(s => s.S)
-  const glyph = glyphOf((st.routines.find(r => r.id === w.routineId) || {}).emoji)
+  const routine = st.routines.find(r => r.id === w.routineId) || null
+  const glyph = glyphOf(routine?.emoji)
+  const stretching = w.kind === 'stretching'
   return <div className="item" {...tappable(onClick)}>
     <span className="lrow-i" style={{ width: 34, height: 34, borderRadius: 8, fontSize: 19 }}><Icon name={glyph} /></span>
     <div className="grow"><div className="tt">{w.name}</div>
       <div className="ss">{[fmtDate(w.d, true), ...durPart(w.end - w.start), t('{0} sets', setsDone(w)), fmtVol(w.vol, st.unit)].join(' · ')}</div></div>
+    {stretching && <span className="tag stretch-kind">{t('Stretching')}</span>}
     {w.prs && w.prs.length > 0 && <span className="pr"><Icon name="trophy" />{w.prs.length} PR</span>}
     <Icon name="chevronRight" className="chev" />
   </div>
@@ -1916,6 +1925,8 @@ export function beginWorkout(routineIds, bw) {
       // A session tracks its routines as a list; per-entry `rid` carries which one each
       // exercise came from. No top-level `excludeFromProgression` — per-entry `noProg` does it.
       routineIds: rids,
+      ...(sessionKind(routines) === 'stretching' ? { kind: 'stretching' } : {}),
+      routineKinds: routineKindsOf(routines),
       name: routines.length ? deriveSessionName(routines.map(r => r.name)) : t('Freestyle'),
       bw: bw || null, cur: 0, entries,
       // Snapshot the layout at start so the header ⋮ can change it for this session only —
@@ -1994,6 +2005,8 @@ function beginBackfill({ iso, time, durationMin, routineId, replaceId }) {
     s.active = {
       id: uid(), d: iso, start: backfillStart(iso, time),
       routineIds: rids,
+      ...(sessionKind(routines) === 'stretching' ? { kind: 'stretching' } : {}),
+      routineKinds: routineKindsOf(routines),
       name: routines.length ? deriveSessionName(routines.map(r => r.name)) : t('Freestyle'),
       bw: null, cur: 0, entries,
       backfill: { durationMin, replaceId: replaceId || null },
@@ -2021,6 +2034,10 @@ function AddRoutineToSession({ close }) {
       if (!s.active) return
       s.active.entries.push(...entries)
       s.active.routineIds = [...[].concat(s.active.routineIds || []), r.id]
+      s.active.routineKinds = { ...snapshotRoutineKinds(s.active.routineIds, s.active.routineKinds), [r.id]: routineKind(r) }
+      const kinds = Object.values(s.active.routineKinds)
+      if (kinds.length && kinds.every(kind => kind === 'stretching')) s.active.kind = 'stretching'
+      else delete s.active.kind
       s.active.name = deriveSessionName(s.active.routineIds.map(id => s.routines.find(x => x.id === id)?.name).filter(Boolean))
     })
     close()
@@ -2037,6 +2054,7 @@ function AddRoutineToSession({ close }) {
           {...tappable(disabled ? null : () => add(r))}>
           <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
           <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+          {routineKind(r) === 'stretching' && <span className="tag stretch-kind">{t('Stretching')}</span>}
           {already ? <span className="tag">{t('already added')}</span> : empty ? <span className="tag">{t('no exercises')}</span> : <Icon name="chevronRight" className="chev" />}
         </div>
       })}
@@ -2203,9 +2221,10 @@ export const sessionNoteSheet = () => ui().openSheet(close => <SessionNote close
 
 // Shown when the last exercise's last set is checked — finish, or keep going.
 function WorkoutComplete({ close }) {
-  return <div style={{ textAlign: 'center', padding: '8px 0' }}>
+  const stretching = useStore(s => s.S.active?.kind === 'stretching')
+  return <div className={stretching ? 'stretching-workout' : undefined} style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="checkCircle" /></div>
-    <h3 style={{ margin: '8px 0' }}>{t("That's the whole workout!")}</h3>
+    <h3 style={{ margin: '8px 0' }}>{t("That's the whole workout!")}{stretching && <span className="tag stretch-kind" style={{ marginLeft: 6 }}>{t('Stretching')}</span>}</h3>
     <div className="muted small" style={{ marginBottom: 16 }}>{t('Every exercise done — great work. Finish up, or keep going and add another exercise.')}</div>
     <Button variant="primary" icon="flag" onClick={() => { close(); finishWorkout() }}>{t('Finish workout')}</Button>
     <div style={{ height: 8 }} />
@@ -2216,9 +2235,10 @@ export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComple
 
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
-  return <div style={{ textAlign: 'center', padding: '8px 0' }}>
+  const stretching = w.kind === 'stretching'
+  return <div className={stretching ? 'stretching-workout' : undefined} style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
-    <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+    <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}{stretching && <span className="tag stretch-kind" style={{ marginLeft: 6 }}>{t('Stretching')}</span>}</h3>
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>
       <div className="tile"><div className="l">{t('Volume')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtVol(w.vol, st.unit)}</div></div>

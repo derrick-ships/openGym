@@ -78,7 +78,7 @@ export function installViewportGuard(win = window) {
     if (wasOpen && !open) settle()
     wasOpen = open
   }
-  const onScroll = () => { if (!wasOpen) realign(win) }
+  const onScroll = () => realign(win)
   const onFocusOut = e => { if (isText(e.target)) settle() }
 
   vv.addEventListener('resize', onResize)

@@ -97,4 +97,15 @@ describe('viewport guard', () => {
     expect(w.scrollTo).not.toHaveBeenCalled()
     expect(typeof installViewportGuard({ visualViewport: null, document: {} })).toBe('function')
   })
+
+  it('realigns on scroll when the keyboard recovers without a resize event', () => {
+    const w = fakeWindow({ vvHeight: 480 })
+    installViewportGuard(w)
+    // Some iOS transitions update the visual viewport without delivering the resize that
+    // normally clears the guard's cached keyboard-open state.
+    w.visualViewport.height = 800
+    w.visualViewport.offsetTop = 190
+    w.fire(w.visualViewport, 'scroll')
+    expect(w.scrollTo).toHaveBeenCalledWith(0, 0)
+  })
 })

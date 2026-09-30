@@ -289,6 +289,20 @@ export default function Settings() {
       <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
         value={S.restSec} onChange={v => update(s => { s.restSec = v })}
         options={[{ value: 0, label: t('Off') }, ...[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))]} />
+      <SelectRow icon="heart" iconTint="var(--blue)" title={t('Breathing guide')}
+        subtitle={t('Choose a breathing exercise for your rest period.')}
+        value={S.breathingExercise || 'coherent'} onChange={v => update(s => { s.breathingExercise = v })}
+        options={[
+          { value: 'physiological-sigh', label: t('Physiological sigh') },
+          { value: 'coherent', label: t('Coherent breathing') },
+          { value: 'extended-exhale', label: t('Extended exhale') },
+          { value: 'bhramari', label: t('Bhramari (humming breath)') },
+          { value: 'alternate-nostril', label: t('Alternate nostril') },
+        ]} />
+      <Row icon="bell" iconTint="var(--blue)" title={t('Haptics on breathing cues')}
+        subtitle={t('A brief vibration marks each breathing phase.')}>
+        <Switch checked={S.breathingHaptics !== false} onChange={v => update(s => { s.breathingHaptics = v })} />
+      </Row>
       {/* Default for a rest-pause burst added live on a plain set — a planned exercise's own
           "Rest (s)" (in its Intensifier config) overrides this, same as the main rest timer
           is the fallback whenever an exercise has no progression rule of its own. */}

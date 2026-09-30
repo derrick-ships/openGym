@@ -1301,6 +1301,8 @@ export default {
   'Hum softly with your mouth closed': 'Summ leise mit geschlossenem Mund',
   'Left nostril': 'Linkes Nasenloch',
   'Right nostril': 'Rechtes Nasenloch',
+  'Close your left nostril; breathe through the right nostril': 'Schließe das linke Nasenloch; atme durch das rechte',
+  'Close your right nostril; breathe through the left nostril': 'Schließe das rechte Nasenloch; atme durch das linke',
   'Switch sides · right nostril': 'Seite wechseln · rechtes Nasenloch',
   'Switch sides · left nostril': 'Seite wechseln · linkes Nasenloch',
   'Hold comfortably': 'Angenehm anhalten',

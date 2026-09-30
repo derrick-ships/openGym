@@ -67,6 +67,7 @@ beforeEach(() => {
   savedSettings = { ...useStore.getState().S }
   useStore.setState({ S: { ...savedSettings, breathingExercise: 'coherent', breathingHaptics: true } })
   useUI.setState({ timer: null, work: null })
+  mocks.ui.addRest.mockClear()
   mocks.phaseBoundaryHaptic.mockClear()
 })
 
@@ -88,11 +89,13 @@ describe('breathing guide in the rest timer', () => {
     act(() => useUI.setState({ timer: rest() }))
     render()
     expect(button('Breathe')).toBeTruthy()
+    expect(button('Breathe').getAttribute('aria-controls')).toBeNull()
     expect(button('Skip')).toBeTruthy()
     expect(host.querySelectorAll('#timer.rest .acts button')).toHaveLength(3)
 
     await click(button('Breathe'))
     expect(host.querySelector('.breathing-guide')).toBeTruthy()
+    expect(button('Close breathing guide').getAttribute('aria-controls')).toBe('breathing-guide')
     expect(host.querySelector('#timer.rest .head .t').textContent).toBe('1:30')
     expect(button('15s')).toBeTruthy()
     expect(button('Skip')).toBeTruthy()
@@ -108,6 +111,22 @@ describe('breathing guide in the rest timer', () => {
 
     expect(host.querySelector('.breathing-guide')).toBeNull()
     expect(useUI.getState().timer).toBe(currentRest)
+  })
+
+  it('keeps the guide open while the rest controls add or subtract 15 seconds', async () => {
+    const currentRest = rest()
+    act(() => useUI.setState({ timer: currentRest }))
+    render()
+    await click(button('Breathe'))
+
+    const controls = host.querySelectorAll('#timer.rest .acts button')
+    await click(controls[0])
+    await click(controls[1])
+
+    expect(mocks.ui.addRest).toHaveBeenNthCalledWith(1, -15)
+    expect(mocks.ui.addRest).toHaveBeenNthCalledWith(2, 15)
+    expect(useUI.getState().timer).toBe(currentRest)
+    expect(host.querySelector('.breathing-guide')).toBeTruthy()
   })
 
   it('closes when a different rest timer replaces the active rest', async () => {
@@ -148,6 +167,21 @@ describe('breathing guide in the rest timer', () => {
     expect(button('Breathe')).toBeUndefined()
   })
 
+  it('closes naturally when the rest expires', async () => {
+    act(() => useUI.setState({ timer: rest(3) }))
+    render()
+    await click(button('Breathe'))
+    expect(host.querySelector('.breathing-guide')).toBeTruthy()
+
+    await act(async () => { vi.advanceTimersByTime(3000); await Promise.resolve() })
+    expect(host.querySelector('.breathing-guide')).toBeNull()
+    expect(button('Breathe').getAttribute('aria-controls')).toBeNull()
+    act(() => useUI.setState({ timer: null }))
+
+    expect(button('Breathe')).toBeUndefined()
+    expect(document.body.classList.contains('rest-guide')).toBe(false)
+  })
+
   it('offers classic 4-7-8 only when at least 80 seconds remain', async () => {
     useStore.setState({ S: { ...useStore.getState().S, breathingExercise: 'extended-exhale' } })
     act(() => useUI.setState({ timer: rest(79) }))
@@ -175,5 +209,43 @@ describe('breathing guide in the rest timer', () => {
     act(() => document.dispatchEvent(new Event('visibilitychange')))
     expect(host.querySelector('.breathing-phase').textContent).toContain('Exhale')
     expect(mocks.phaseBoundaryHaptic).not.toHaveBeenCalled()
+  })
+
+  it('plays one haptic for a visible phase boundary, but none on initial mount', async () => {
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+    expect(mocks.phaseBoundaryHaptic).not.toHaveBeenCalled()
+
+    await act(async () => { vi.advanceTimersByTime(5500); await Promise.resolve() })
+
+    expect(host.querySelector('.breathing-phase').textContent).toContain('Exhale')
+    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledTimes(1)
+  })
+
+  it('suppresses phase haptics when disabled in settings', async () => {
+    useStore.setState({ S: { ...useStore.getState().S, breathingHaptics: false } })
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+
+    await act(async () => { vi.advanceTimersByTime(5500); await Promise.resolve() })
+
+    expect(host.querySelector('.breathing-phase').textContent).toContain('Exhale')
+    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledTimes(1)
+    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledWith(false, expect.any(Function))
+  })
+
+  it('restarts from the beginning when the preferred exercise changes while open', async () => {
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+    await act(async () => { vi.advanceTimersByTime(8000); await Promise.resolve() })
+    expect(host.querySelector('.breathing-phase').textContent).toContain('Exhale')
+
+    act(() => useStore.setState({ S: { ...useStore.getState().S, breathingExercise: 'bhramari' } }))
+
+    expect(host.querySelector('.breathing-phase').textContent).toContain('Inhale')
+    expect(host.querySelector('.breathing-phase').textContent).not.toContain('Hum')
   })
 })

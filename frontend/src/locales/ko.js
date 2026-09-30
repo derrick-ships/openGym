@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': '입을 다문 채 조용히 허밍하기',
   'Left nostril': '왼쪽 콧구멍',
   'Right nostril': '오른쪽 콧구멍',
+  'Close your left nostril; breathe through the right nostril': '왼쪽 콧구멍을 막고 오른쪽 콧구멍으로 호흡하세요',
+  'Close your right nostril; breathe through the left nostril': '오른쪽 콧구멍을 막고 왼쪽 콧구멍으로 호흡하세요',
   'Switch sides · right nostril': '콧구멍 바꾸기 · 오른쪽',
   'Switch sides · left nostril': '콧구멍 바꾸기 · 왼쪽',
   'Hold comfortably': '편안하게 숨 참기',

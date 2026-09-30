@@ -66,10 +66,22 @@ describe('phaseAt', () => {
   })
 
   it('alternates nostril sides over four rounds', () => {
-    expect(phaseAt('alternate-nostril', 0)).toMatchObject({ id: 'inhale-left', side: 'left', durationMs: 4000 })
-    expect(phaseAt('alternate-nostril', 4000)).toMatchObject({ id: 'exhale-right', side: 'right', durationMs: 6000 })
-    expect(phaseAt('alternate-nostril', 10000)).toMatchObject({ id: 'inhale-right', side: 'right', durationMs: 4000 })
-    expect(phaseAt('alternate-nostril', 14000)).toMatchObject({ id: 'exhale-left', side: 'left', durationMs: 6000 })
+    expect(phaseAt('alternate-nostril', 0)).toMatchObject({
+      id: 'inhale-left', side: 'left', durationMs: 4000,
+      cue: 'Close your right nostril; breathe through the left nostril',
+    })
+    expect(phaseAt('alternate-nostril', 4000)).toMatchObject({
+      id: 'exhale-right', side: 'right', durationMs: 6000,
+      cue: 'Close your left nostril; breathe through the right nostril',
+    })
+    expect(phaseAt('alternate-nostril', 10000)).toMatchObject({
+      id: 'inhale-right', side: 'right', durationMs: 4000,
+      cue: 'Close your left nostril; breathe through the right nostril',
+    })
+    expect(phaseAt('alternate-nostril', 14000)).toMatchObject({
+      id: 'exhale-left', side: 'left', durationMs: 6000,
+      cue: 'Close your right nostril; breathe through the left nostril',
+    })
     expect(phaseAt('alternate-nostril', 20000)).toMatchObject({ id: 'inhale-left', cycle: 2 })
     expect(phaseAt('alternate-nostril', 80000)).toMatchObject({
       id: 'ready', label: 'Guide complete — rest continues', roundsCompleted: 4, completed: true,
@@ -90,10 +102,11 @@ describe('phaseAt', () => {
 
   it('reserves the final five seconds for normal breathing and does not start an unfinishable cycle', () => {
     expect(phaseAt('coherent', 0, 5000)).toMatchObject({
-      id: 'ready', label: 'Next set soon', cue: 'Take a normal breath', completed: true,
+      id: 'ready', label: 'Take a normal breath', cue: 'Next set soon', completed: true,
     })
     expect(phaseAt('coherent', 10000, 14999)).toMatchObject({
-      id: 'ready', label: 'Guide complete — rest continues', roundsCompleted: 1, completed: true,
+      id: 'ready', label: 'Not enough time for a full round', cue: 'Take a normal breath',
+      roundsCompleted: 1, completed: true,
     })
     expect(phaseAt('coherent', 10000, 15000)).toMatchObject({
       id: 'inhale', cycle: 2, roundsCompleted: 1, completed: false,
@@ -107,12 +120,19 @@ describe('phaseAt', () => {
     })
   })
 
+  it('does not claim round-cap completion when another round cannot fit', () => {
+    expect(phaseAt('coherent', 20000, 14999)).toMatchObject({
+      id: 'ready', label: 'Not enough time for a full round', cue: 'Take a normal breath',
+      roundsCompleted: 2, completed: true,
+    })
+  })
+
   it('keeps the current cycle when rest is shortened mid-cycle', () => {
     expect(phaseAt('coherent', 4000, 9000)).toMatchObject({
       id: 'inhale', cycle: 1, completed: false,
     })
     expect(phaseAt('coherent', 5000, 5000)).toMatchObject({
-      id: 'ready', label: 'Next set soon', roundsCompleted: 0, completed: true,
+      id: 'ready', label: 'Take a normal breath', cue: 'Next set soon', roundsCompleted: 0, completed: true,
     })
   })
 

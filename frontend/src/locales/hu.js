@@ -1284,6 +1284,8 @@ export default {
   'Hum softly with your mouth closed': 'Dúdolj halkan, csukott szájjal',
   'Left nostril': 'Bal orrlyuk',
   'Right nostril': 'Jobb orrlyuk',
+  'Close your left nostril; breathe through the right nostril': 'Zárd be a bal orrlyukad; lélegezz a jobb orrlyukon át',
+  'Close your right nostril; breathe through the left nostril': 'Zárd be a jobb orrlyukad; lélegezz a bal orrlyukon át',
   'Switch sides · right nostril': 'Válts oldalt · jobb orrlyuk',
   'Switch sides · left nostril': 'Válts oldalt · bal orrlyuk',
   'Hold comfortably': 'Kényelmesen tartsd bent',

@@ -130,3 +130,20 @@ describe('Settings — Sounds switch unlocks audio from the tap', () => {
     expect(unlock).not.toHaveBeenCalled()
   })
 })
+
+describe('Settings — breathing guide preferences', () => {
+  it('shows the breathing selector description', () => {
+    mount()
+    const row = rowTitled('Breathing guide')
+    expect(row.querySelector('.lrow-s').textContent).toBe('Choose a breathing exercise for your rest period.')
+  })
+
+  it('names the haptics switch after its visible title', () => {
+    mount()
+    const row = rowTitled('Haptics on breathing cues')
+    const sw = switchIn(row)
+    expect(sw.getAttribute('aria-label')).toBe(row.querySelector('.lrow-t').textContent)
+    act(() => { sw.click() })
+    expect(mocks.S.breathingHaptics).toBe(false)
+  })
+})

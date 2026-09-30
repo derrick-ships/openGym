@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': 'Nuć cicho przy zamkniętych ustach',
   'Left nostril': 'Lewe nozdrze',
   'Right nostril': 'Prawe nozdrze',
+  'Close your left nostril; breathe through the right nostril': 'Zamknij lewą dziurkę nosa; oddychaj przez prawą',
+  'Close your right nostril; breathe through the left nostril': 'Zamknij prawą dziurkę nosa; oddychaj przez lewą',
   'Switch sides · right nostril': 'Zmień stronę · prawe nozdrze',
   'Switch sides · left nostril': 'Zmień stronę · lewe nozdrze',
   'Hold comfortably': 'Wstrzymaj bez napięcia',

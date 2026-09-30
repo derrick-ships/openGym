@@ -45,10 +45,10 @@ export const BREATHING_EXERCISES = [
       {
         id: 'alternate', label: 'Alternate nostril', rounds: 4,
         phases: [
-          phase('inhale-left', 'Inhale', 4000, 'inhale', 'Left nostril', 'left'),
-          phase('exhale-right', 'Exhale', 6000, 'exhale', 'Right nostril', 'right'),
-          phase('inhale-right', 'Inhale', 4000, 'inhale', 'Switch sides · right nostril', 'right'),
-          phase('exhale-left', 'Exhale', 6000, 'exhale', 'Switch sides · left nostril', 'left'),
+          phase('inhale-left', 'Inhale', 4000, 'inhale', 'Close your right nostril; breathe through the left nostril', 'left'),
+          phase('exhale-right', 'Exhale', 6000, 'exhale', 'Close your left nostril; breathe through the right nostril', 'right'),
+          phase('inhale-right', 'Inhale', 4000, 'inhale', 'Close your left nostril; breathe through the right nostril', 'right'),
+          phase('exhale-left', 'Exhale', 6000, 'exhale', 'Close your right nostril; breathe through the left nostril', 'left'),
         ],
       },
       {
@@ -68,9 +68,10 @@ const cycleDuration = phases => phases.reduce((total, item) => total + item.dura
 
 const finished = (rounds, roundsCompleted, state = 'complete') => ({
   id: state === 'ended' ? null : 'ready',
-  label: state === 'ended' ? null : state === 'soon' ? 'Next set soon'
+  label: state === 'ended' ? null : state === 'soon' ? 'Take a normal breath'
     : state === 'not-enough-time' ? 'Not enough time for a full round' : 'Guide complete — rest continues',
-  cue: state === 'ended' ? null : state === 'complete' ? 'Breathe normally' : 'Take a normal breath',
+  cue: state === 'ended' ? null : state === 'complete' ? 'Breathe normally'
+    : state === 'soon' ? 'Next set soon' : 'Take a normal breath',
   motion: 'still',
   phaseIndex: -1,
   durationMs: 0,
@@ -102,7 +103,7 @@ export function phaseAt(exerciseId, elapsedMs, remainingMs = Infinity, variantId
   const cycle = completedCycles + 1
   // Do not begin another round unless it can finish before the final five seconds of rest.
   if (cycleElapsed === 0 && remaining < duration + 5000) {
-    return finished(rounds, completedCycles, completedCycles ? 'complete' : 'not-enough-time')
+    return finished(rounds, completedCycles, 'not-enough-time')
   }
 
   let offset = 0

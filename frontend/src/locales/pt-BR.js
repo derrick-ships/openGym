@@ -708,6 +708,8 @@ export const PT_BR_OVERRIDES = {
   'Hum softly with your mouth closed': 'Faça um zumbido suave com a boca fechada',
   'Left nostril': 'Narina esquerda',
   'Right nostril': 'Narina direita',
+  'Close your left nostril; breathe through the right nostril': 'Feche a narina esquerda; respire pela narina direita',
+  'Close your right nostril; breathe through the left nostril': 'Feche a narina direita; respire pela narina esquerda',
   'Switch sides · right nostril': 'Troque de lado · narina direita',
   'Switch sides · left nostril': 'Troque de lado · narina esquerda',
   'Hold comfortably': 'Segure com conforto',

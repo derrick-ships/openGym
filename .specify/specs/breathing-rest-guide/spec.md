@@ -18,7 +18,7 @@ Let a lifter optionally follow a short paced-breathing exercise during the exist
 - Persist a preferred guide and a breathing-haptics preference in the existing user settings state. Defaults: coherent breathing 5-in/5-out; haptics enabled. Settings changes use existing state update/persistence/sync behavior.
 - Offer the five supplied exercise families:
   1. **Physiological sigh:** nose inhale (2 s), short second nose inhale (1 s), slow mouth exhale (6 s); guide three cycles, then show a still “ready for the next set” state.
-  2. **Coherent breathing:** smooth 5 s inhale / 5 s exhale, no holds; guide up to ten cycles or until rest ends.
+  2. **Coherent breathing:** smooth 5 s inhale / 5 s exhale by default, or 4 s inhale / 6 s exhale; no holds. The lifter can switch between the two variants; guide up to ten cycles or until rest ends.
   3. **Extended exhale:** gym-safe 4 s inhale / 6 s exhale, no hold; guide five cycles or until rest ends. Offer the supplied classic 4-7-8 pattern as an optional, session-only variant: 4 s inhale, 7 s full-lung hold, 8 s mouth exhale, up to four complete cycles. Keep 4/6 as the default; show/enable 4-7-8 only when at least 80 seconds remain in rest, and let the lifter switch back at any time.
   4. **Bhramari:** gentle 4 s nose inhale, closed-mouth hum for 7 s; guide five rounds or until rest ends.
   5. **Nadi shodhana / box stand-in:** guide the simple alternate-nostril 4-in/6-out sequence for four rounds; provide a box-breathing 4-4-4-4 mode in the guide as the supplied hands-free Western stand-in. The user can switch modes while the guide is open.

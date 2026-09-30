@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': 'मुंह बंद रखकर धीरे गुनगुनाएँ',
   'Left nostril': 'बाईं नासिका',
   'Right nostril': 'दाईं नासिका',
+  'Close your left nostril; breathe through the right nostril': 'बाईं नासिका बंद करें; दाईं नासिका से श्वास लें',
+  'Close your right nostril; breathe through the left nostril': 'दाईं नासिका बंद करें; बाईं नासिका से श्वास लें',
   'Switch sides · right nostril': 'नासिका बदलें · दाईं ओर',
   'Switch sides · left nostril': 'नासिका बदलें · बाईं ओर',
   'Hold comfortably': 'आराम से रोकें',

@@ -8,12 +8,12 @@ const isHidden = () => typeof document === 'undefined' || document.hidden || doc
 const phaseToken = phase => `${phase.cycle}:${phase.phaseIndex}:${phase.id}`
 const phaseSeconds = phase => Math.max(0, Math.ceil((phase.durationMs - phase.phaseElapsedMs) / 1000))
 
-export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEnabled }) {
+export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEnabled, onComplete }) {
   const exercise = BREATHING_EXERCISES.find(item => item.id === exerciseId) || BREATHING_EXERCISES[1]
   const [sequence, setSequence] = useState({ startedAt, variantId: exercise.defaultVariant })
   const [phase, setPhase] = useState(() => phaseAt(exercise.id, Date.now() - startedAt, timer.endsAt - Date.now(), exercise.defaultVariant))
   const [seconds, setSeconds] = useState(() => phaseSeconds(phase))
-  const [remainingMs, setRemainingMs] = useState(() => Math.max(0, timer.endsAt - Date.now()))
+  const [classicAvailable, setClassicAvailable] = useState(() => timer.endsAt - Date.now() >= 80_000)
   const [visible, setVisible] = useState(() => !isHidden())
   const [syncEpoch, setSyncEpoch] = useState(0)
   const previousToken = useRef(null)
@@ -23,7 +23,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
   endsAt.current = timer.endsAt
 
   const variants = exercise.variants.filter(variant =>
-    variant.id !== '4-7-8' || remainingMs >= 80_000 || sequence.variantId === variant.id
+    variant.id !== '4-7-8' || classicAvailable || sequence.variantId === variant.id
   )
 
   useEffect(() => {
@@ -40,6 +40,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
       const remaining = Math.max(0, endsAt.current - now)
       const next = phaseAt(exercise.id, now - sequence.startedAt, remaining, sequence.variantId)
       const token = phaseToken(next)
+      if (!next.id) onComplete()
       if (allowHaptic && previousToken.current && token !== previousToken.current && !next.completed) {
         void phaseBoundaryHaptic(hapticsEnabled, () =>
           active.current && effectEpoch.current === thisEffect && !isHidden() && Date.now() < endsAt.current
@@ -48,7 +49,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
       if (token !== previousToken.current || !allowHaptic) setPhase(next)
       previousToken.current = token
       setSeconds(phaseSeconds(next))
-      setRemainingMs(remaining)
+      setClassicAvailable(remaining >= 80_000)
     }
     const startTicks = allowHaptic => {
       clearInterval(tickId)
@@ -73,7 +74,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
       clearInterval(tickId)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [exercise.id, sequence, hapticsEnabled, timer.endsAt])
+  }, [exercise.id, sequence, hapticsEnabled, timer.endsAt, onComplete])
 
   const chooseVariant = id => {
     if (id === sequence.variantId) return
@@ -124,7 +125,6 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
               size="sm"
               className="breathing-mode"
               aria-pressed={sequence.variantId === variant.id}
-              disabled={variant.id === '4-7-8' && remainingMs < 80_000}
               onClick={() => chooseVariant(variant.id)}
             >{t(variant.label)}</Button>
           ))}

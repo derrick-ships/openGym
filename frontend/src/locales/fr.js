@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': 'Fredonnez doucement, bouche fermée',
   'Left nostril': 'Narine gauche',
   'Right nostril': 'Narine droite',
+  'Close your left nostril; breathe through the right nostril': 'Bouchez la narine gauche ; respirez par la narine droite',
+  'Close your right nostril; breathe through the left nostril': 'Bouchez la narine droite ; respirez par la narine gauche',
   'Switch sides · right nostril': 'Changer de côté · narine droite',
   'Switch sides · left nostril': 'Changer de côté · narine gauche',
   'Hold comfortably': 'Retenir confortablement',

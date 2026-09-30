@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': 'Тихо гудите с закрытым ртом',
   'Left nostril': 'Левая ноздря',
   'Right nostril': 'Правая ноздря',
+  'Close your left nostril; breathe through the right nostril': 'Закройте левую ноздрю; дышите через правую',
+  'Close your right nostril; breathe through the left nostril': 'Закройте правую ноздрю; дышите через левую',
   'Switch sides · right nostril': 'Сменить сторону · правая ноздря',
   'Switch sides · left nostril': 'Сменить сторону · левая ноздря',
   'Hold comfortably': 'Задержите дыхание без напряжения',

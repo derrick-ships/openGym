@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': 'Ağzın kapalıyken hafifçe mırıldan',
   'Left nostril': 'Sol burun deliği',
   'Right nostril': 'Sağ burun deliği',
+  'Close your left nostril; breathe through the right nostril': 'Sol burun deliğinizi kapatın; sağ burun deliğinden nefes alın',
+  'Close your right nostril; breathe through the left nostril': 'Sağ burun deliğinizi kapatın; sol burun deliğinden nefes alın',
   'Switch sides · right nostril': 'Taraf değiştir · sağ burun deliği',
   'Switch sides · left nostril': 'Taraf değiştir · sol burun deliği',
   'Hold comfortably': 'Rahatça tut',

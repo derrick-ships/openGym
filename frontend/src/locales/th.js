@@ -1292,6 +1292,8 @@ export default {
   'Hum softly with your mouth closed': 'ฮัมเสียงเบา ๆ โดยปิดปาก',
   'Left nostril': 'รูจมูกซ้าย',
   'Right nostril': 'รูจมูกขวา',
+  'Close your left nostril; breathe through the right nostril': 'ปิดรูจมูกซ้าย แล้วหายใจผ่านรูจมูกขวา',
+  'Close your right nostril; breathe through the left nostril': 'ปิดรูจมูกขวา แล้วหายใจผ่านรูจมูกซ้าย',
   'Switch sides · right nostril': 'สลับข้าง · รูจมูกขวา',
   'Switch sides · left nostril': 'สลับข้าง · รูจมูกซ้าย',
   'Hold comfortably': 'กลั้นหายใจอย่างสบาย',

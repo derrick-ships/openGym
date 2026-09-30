@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': 'Canticchia piano a bocca chiusa',
   'Left nostril': 'Narice sinistra',
   'Right nostril': 'Narice destra',
+  'Close your left nostril; breathe through the right nostril': 'Chiudi la narice sinistra; respira attraverso la narice destra',
+  'Close your right nostril; breathe through the left nostril': 'Chiudi la narice destra; respira attraverso la narice sinistra',
   'Switch sides · right nostril': 'Cambia lato · narice destra',
   'Switch sides · left nostril': 'Cambia lato · narice sinistra',
   'Hold comfortably': 'Trattieni senza sforzo',

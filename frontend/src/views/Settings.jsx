@@ -301,7 +301,7 @@ export default function Settings() {
         ]} />
       <Row icon="bell" iconTint="var(--blue)" title={t('Haptics on breathing cues')}
         subtitle={t('A brief vibration marks each breathing phase.')}>
-        <Switch checked={S.breathingHaptics !== false} onChange={v => update(s => { s.breathingHaptics = v })} />
+        <Switch aria-label={t('Haptics on breathing cues')} checked={S.breathingHaptics !== false} onChange={v => update(s => { s.breathingHaptics = v })} />
       </Row>
       {/* Default for a rest-pause burst added live on a plain set — a planned exercise's own
           "Rest (s)" (in its Intensifier config) overrides this, same as the main rest timer

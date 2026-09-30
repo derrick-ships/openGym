@@ -1285,6 +1285,8 @@ export default {
   'Hum softly with your mouth closed': 'Tararea suavemente con la boca cerrada',
   'Left nostril': 'Fosa nasal izquierda',
   'Right nostril': 'Fosa nasal derecha',
+  'Close your left nostril; breathe through the right nostril': 'Cierra la fosa nasal izquierda; respira por la fosa nasal derecha',
+  'Close your right nostril; breathe through the left nostril': 'Cierra la fosa nasal derecha; respira por la fosa nasal izquierda',
   'Switch sides · right nostril': 'Cambia de lado · fosa nasal derecha',
   'Switch sides · left nostril': 'Cambia de lado · fosa nasal izquierda',
   'Hold comfortably': 'Mantén el aire cómodamente',

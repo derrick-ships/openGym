@@ -884,8 +884,8 @@ body.chips-dragging *{cursor:inherit}
 #timer.rest .head{display:flex;align-items:center;gap:12px}
 #timer.rest .head .bar{min-width:18px}
 #timer.rest .breathe-toggle{flex:none;min-height:40px}
-#timer.rest .breathe-toggle.breathe{background:var(--blue);color:#fff}
-#timer.rest .breathe-toggle.breathe:active{filter:brightness(.9)}
+#timer.rest .breathe-toggle.breathe{background:#005bb8;color:#fff}
+#timer.rest .breathe-toggle.breathe:active{background:#004a96}
 #timer.rest .breathe-toggle.plain{width:40px;height:40px;padding:0;justify-content:center;border-radius:50%;background:var(--surface-2);color:var(--label)}
 #timer.rest .acts{display:flex;align-items:center;gap:8px}
 #timer.rest .acts .btn{padding-top:11px;padding-bottom:11px}   /* sweaty hands, mid-set */
@@ -904,13 +904,17 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 @keyframes breath-second{from{transform:scale(1.02)}to{transform:scale(1.12)}}
 .breathing-copy{flex:1;min-width:0}
 .breathing-phase{display:flex;align-items:baseline;gap:8px;font-size:18px;font-weight:650;line-height:1.25;letter-spacing:-.015em}
-.breathing-seconds{font-size:15px;font-weight:550;color:var(--label-2);font-variant-numeric:tabular-nums}
-.breathing-cue{margin-top:3px;color:var(--label-2);font-size:13px;line-height:1.3}
-.breathing-round{margin-top:3px;color:var(--label-3);font-size:12px;line-height:1.25}
+.breathing-seconds{font-size:15px;font-weight:550;color:#b7b7bd;font-variant-numeric:tabular-nums}
+.breathing-cue{margin-top:3px;color:#b7b7bd;font-size:13px;line-height:1.3}
+.breathing-round{margin-top:3px;color:#b7b7bd;font-size:12px;line-height:1.25}
 .breathing-modes{display:flex;gap:6px;flex-wrap:wrap}
 .breathing-guide .breathing-mode{min-height:40px;padding:7px 10px;background:var(--surface-2);color:var(--label);font-size:13px;line-height:1.2}
-.breathing-guide .breathing-mode[aria-pressed="true"]{background:color-mix(in srgb,var(--blue) 18%,var(--surface));color:var(--blue);font-weight:600}
-.breathing-safety{margin:0;color:var(--label-3);font-size:12px;line-height:1.3}
+.breathing-guide .breathing-mode[aria-pressed="true"]{background:#005bb8;color:#fff;font-weight:600}
+.breathing-safety{margin:0;color:#b7b7bd;font-size:12px;line-height:1.3}
+:root[data-theme="light"] .breathing-seconds,
+:root[data-theme="light"] .breathing-cue,
+:root[data-theme="light"] .breathing-round,
+:root[data-theme="light"] .breathing-safety{color:#57575f}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media (prefers-reduced-motion:reduce){.breathing-orb{transform:none!important;animation:none!important;will-change:auto}}
 /* work timer (issue #16): the same bar doing the opposite job — outlined and tinted so a

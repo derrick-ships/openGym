@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useUI } from '../store/useUI.js'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
@@ -16,7 +16,9 @@ export default function RestTimer() {
   const work = useUI(s => s.work)
   const settings = useStore(s => s.S)
   const { addRest, stopRest, finishWorkEarly, stopWork } = useUI()
-  const [guideStartedAt, setGuideStartedAt] = useState(null)
+  const exerciseId = settings.breathingExercise || 'coherent'
+  const [guide, setGuide] = useState(null)
+  const closeGuide = useCallback(() => setGuide(null), [])
   const restIdentity = useRef(null)
   const on = work || timer
   const restKey = timer && !work ? String(timer.endsAt - timer.total * 1000) : null
@@ -29,16 +31,21 @@ export default function RestTimer() {
   useEffect(() => {
     if (!restKey) {
       restIdentity.current = null
-      setGuideStartedAt(null)
+      setGuide(null)
       return
     }
-    if (restIdentity.current !== null && restIdentity.current !== restKey) setGuideStartedAt(null)
+    if (restIdentity.current !== null && restIdentity.current !== restKey) setGuide(null)
     restIdentity.current = restKey
   }, [restKey])
   useEffect(() => {
-    document.body.classList.toggle('rest-guide', !!guideStartedAt && !!timer && !work)
+    if (guide && guide.restKey === restKey && guide.exerciseId !== exerciseId) {
+      setGuide({ exerciseId, startedAt: Date.now(), restKey })
+    }
+  }, [exerciseId, guide, restKey])
+  useEffect(() => {
+    document.body.classList.toggle('rest-guide', !!guide && !!timer && !work)
     return () => document.body.classList.remove('rest-guide')
-  }, [!!guideStartedAt, !!timer, !!work])
+  }, [!!guide, !!timer, !!work])
   if (!on) return null
   const pct = (on.left / on.total) * 100
 
@@ -58,27 +65,28 @@ export default function RestTimer() {
   // read at a glance, controls get their own row. −15 and +15 sit together in number-line
   // order; Skip is pushed to the far edge, away from the button you tap to buy more time.
   return (
-    <div id="timer" className={`rest${guideStartedAt ? ' guided' : ''}`}>
+    <div id="timer" className={`rest${guide ? ' guided' : ''}`}>
       <div className="head">
         <div className="t">{clock(timer.left)}</div>
         <div className="bar"><i style={{ width: pct + '%' }} /></div>
         <Button
           size="sm"
-          variant={guideStartedAt ? 'plain' : 'breathe'}
+          variant={guide ? 'plain' : 'breathe'}
           className="breathe-toggle"
-          aria-label={guideStartedAt ? t('Close breathing guide') : undefined}
-          aria-expanded={!!guideStartedAt}
-          aria-controls="breathing-guide"
-          onClick={() => setGuideStartedAt(open => open ? null : Date.now())}
-          icon={guideStartedAt ? 'xmark' : undefined}
-        >{guideStartedAt ? null : t('Breathe')}</Button>
+          aria-label={guide ? t('Close breathing guide') : undefined}
+          aria-expanded={!!guide}
+          aria-controls={guide ? 'breathing-guide' : undefined}
+          onClick={() => setGuide(current => current ? null : { exerciseId, startedAt: Date.now(), restKey })}
+          icon={guide ? 'xmark' : undefined}
+        >{guide ? null : t('Breathe')}</Button>
       </div>
-      {guideStartedAt && <BreathingGuide
-        key={settings.breathingExercise || 'coherent'}
-        exerciseId={settings.breathingExercise || 'coherent'}
+      {guide && <BreathingGuide
+        key={guide.exerciseId}
+        exerciseId={guide.exerciseId}
         hapticsEnabled={settings.breathingHaptics !== false}
-        startedAt={guideStartedAt}
+        startedAt={guide.startedAt}
         timer={timer}
+        onComplete={closeGuide}
       />}
       <div className="acts">
         <Button size="sm" icon="minus" onClick={() => addRest(-15)}>15s</Button>

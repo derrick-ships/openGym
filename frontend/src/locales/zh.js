@@ -1281,6 +1281,8 @@ export default {
   'Hum softly with your mouth closed': '闭上嘴轻声哼鸣',
   'Left nostril': '左侧鼻孔',
   'Right nostril': '右侧鼻孔',
+  'Close your left nostril; breathe through the right nostril': '闭住左侧鼻孔，用右侧鼻孔呼吸',
+  'Close your right nostril; breathe through the left nostril': '闭住右侧鼻孔，用左侧鼻孔呼吸',
   'Switch sides · right nostril': '切换鼻孔 · 右侧',
   'Switch sides · left nostril': '切换鼻孔 · 左侧',
   'Hold comfortably': '舒适地屏息',

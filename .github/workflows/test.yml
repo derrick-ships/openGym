@@ -97,6 +97,15 @@ jobs:
       # install as test:api in .gitlab-ci.yml; the Agent SDK is optional and stays out).
       - run: npm ci --omit=optional
         working-directory: api
+      # sharp also marks its platform runtime optional; install only the Linux x64
+      # packages needed to boot the server without bringing in the Agent SDK.
+      - run: |
+          sharp_version="$(node -p "require('./package-lock.json').packages['node_modules/@img/sharp-linux-x64'].version")"
+          libvips_version="$(node -p "require('./package-lock.json').packages['node_modules/@img/sharp-libvips-linux-x64'].version")"
+          npm install --no-save --package-lock=false --omit=optional \
+            "@img/sharp-linux-x64@$sharp_version" \
+            "@img/sharp-libvips-linux-x64@$libvips_version"
+        working-directory: api
       - run: npm test
         working-directory: api
       # The api's copy of the exercise catalogue is generated and committed. A dataset change

@@ -33,6 +33,8 @@ import { SESSION_CONTEXT_FLAGS, sessionHandoffText } from './lib/ai-handoff.js'
 import { workoutPageHTML, pageFileName } from './lib/share-page.js'
 import { isShareCancellation, shareHtmlPage } from './lib/share-html.js'
 import { AiShareButtons } from './components/AiButtons.jsx'
+import ShareLink from './components/ShareLink.jsx'
+import { workoutSnapshot } from './lib/share-snapshot.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { assetObjectUrl, uploadAsset } from './lib/api.js'
@@ -1775,17 +1777,6 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
     } finally { setBusy('') }
   }
 
-  const sharePage = async () => {
-    if (busy) return
-    setBusy('page'); setError('')
-    try {
-      const html = workoutPageHTML(st, workout, { prs, e1prs, accent: ACCENTS[st.accent] || ACCENTS.lime, aiText: handoff() })
-      await shareHtmlPage(html, pageFileName('workout', workout.name, workout.d))
-    } catch (cause) {
-      if (!isShareCancellation(cause)) setError(t('Could not share the page.'))
-    } finally { setBusy('') }
-  }
-
   return <>
     <section className="ai-session-card">
       <h4>{t('Make every session count')}</h4>
@@ -1816,7 +1807,8 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
       </Button>
     </div>
     <div style={{ height: 8 }} />
-    <Button variant="ghost" icon="upload" onClick={sharePage} disabled={!!busy} aria-busy={busy === 'page'}>{t('Share as page')}</Button>
+    <ShareLink kind="workout" snapshot={() => workoutSnapshot(st, workout, { prs, e1prs })}
+      download={() => shareHtmlPage(workoutPageHTML(st, workout, { prs, e1prs, accent: ACCENTS[st.accent] || ACCENTS.lime, aiText: handoff() }), pageFileName('workout', workout.name, workout.d))} />
     <div style={{ height: 8 }} />
     <Button variant="tinted" icon="download" onClick={downloadMap} disabled={!mapReady || !!busy} aria-busy={busy === 'map'}>
       {busy === 'map' ? t('Preparing…') : t('Download body map')}

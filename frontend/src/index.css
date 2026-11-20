@@ -215,6 +215,61 @@ h4.sec{
 .row{display:flex;align-items:center;gap:12px}
 .row.between{justify-content:space-between}
 
+/* share page */
+.share-page{min-height:100dvh;padding:0 20px 64px;background:radial-gradient(ellipse 720px 380px at 80% -200px,color-mix(in srgb,var(--acc) 20%,transparent),transparent 75%),var(--bg);color:var(--label);overflow-wrap:anywhere}
+.share-wrap{max-width:960px;margin:auto}
+.share-top{min-height:88px;display:flex;align-items:center;justify-content:space-between;gap:16px;color:var(--label-2);font-size:13px}
+.share-brand{display:inline-flex;align-items:center;gap:7px;color:var(--label);font-size:21px;font-weight:700;letter-spacing:-.035em;white-space:nowrap}
+.share-brand img{width:32px;height:32px;border-radius:8px}
+.share-intro{padding:56px 0 30px;max-width:780px}
+.share-intro h1{font-size:clamp(42px,7.2vw,78px);line-height:1.04;letter-spacing:-.035em;font-weight:700;text-wrap:balance}
+.share-meta{display:flex;flex-wrap:wrap;gap:8px 20px;color:var(--label-2);font-size:15px;margin-top:20px}
+.share-intro>p{color:var(--label-2);margin-top:12px}
+.share-stats.tiles{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0}
+.share-stat.tile{min-height:100px;padding:17px}
+.share-stat .v{font-size:clamp(23px,3vw,32px)}
+.share-stat small{font-size:14px;font-weight:500;color:var(--label-2)}
+.share-body{margin-top:24px;min-height:340px;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:24px;padding:32px;border-radius:var(--r-xl);background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 10%,var(--surface)),var(--surface) 58%);box-shadow:0 18px 48px rgba(0,0,0,.12)}
+.share-body h2,.share-section-head h2,.share-coach h2,.share-footer h2,.share-session-note h2{font-size:clamp(25px,3vw,34px);font-weight:700;line-height:1.12;letter-spacing:-.028em}
+.share-body-copy>p{font-size:14px;color:var(--label-2);margin:16px 0 10px}
+.share-muscles{display:flex;gap:7px;flex-wrap:wrap;margin-top:18px}
+.share-muscles span,.share-superset{font-size:12px;font-weight:600;padding:7px 10px;border-radius:99px;background:color-mix(in srgb,var(--acc) 16%,var(--surface-2));color:var(--label)}
+.share-body .bodymap{width:100%;max-width:390px;margin:auto}
+.share-body .bm-v{max-height:340px}
+.share-work{margin-top:76px}
+.share-section-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:20px}
+.share-section-head>span{color:var(--label-2);font-size:14px;white-space:nowrap}
+.share-exercise{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;padding:20px 0;border-top:var(--hair) solid var(--sep)}
+.share-media{aspect-ratio:1.12;display:grid;place-items:center;overflow:hidden;border-radius:var(--r-lg);background:var(--surface) center/cover no-repeat;color:var(--label-3)}
+.share-media img{width:100%;height:100%;object-fit:cover}
+.share-exercise-content{min-width:0;padding:2px 0}
+.share-exercise-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.share-exercise-head h3{font-size:20px;line-height:1.2;letter-spacing:-.02em;text-transform:capitalize}
+.share-exercise-head p{font-size:13px;color:var(--label-2);margin-top:7px}
+.share-superset{white-space:nowrap}
+.share-sets{list-style:none;margin-top:16px}
+.share-sets li{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:var(--hair) solid var(--sep-op);font-size:14px;font-variant-numeric:tabular-nums}
+.share-set-index{color:var(--label-3);font-size:12px;min-width:20px}
+.share-set-flags{margin-left:auto;display:flex;gap:5px;color:var(--acc);font-size:11px;font-weight:600}
+.share-scheme{margin-top:14px;font-weight:600}.share-scheme span{font-size:13px;font-weight:400;color:var(--label-2)}
+.share-note,.share-session-note p{white-space:pre-wrap;color:var(--label-2);font-size:14px;line-height:1.5;margin-top:12px}
+.share-days{margin-top:24px;color:var(--label-2);font-size:14px}
+.share-session-note{margin-top:60px}
+.share-coach{margin-top:76px;padding:30px;border-radius:var(--r-xl);background:var(--surface);display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:24px}
+.share-coach p,.share-footer p{color:var(--label-2);font-size:15px;line-height:1.5;margin-top:10px}
+.share-coach .ai-buttons{grid-template-columns:1fr}
+.share-footer{margin-top:84px;padding-top:30px;border-top:var(--hair) solid var(--sep)}
+.share-footer h2{margin-top:24px}.share-footer p{max-width:490px}
+.share-footer-links{display:flex;flex-wrap:wrap;gap:12px 24px;margin-top:22px}.share-footer-links a{font-size:14px;font-weight:600;color:var(--label);text-decoration:underline;text-underline-offset:4px}
+.share-error{padding:80px 0;max-width:600px}.share-error h1{font-size:36px;letter-spacing:-.028em;margin-bottom:24px}.share-error a{display:block;margin-top:24px}
+.share-skeleton{padding-top:70px;display:grid;gap:16px}.share-skeleton div{height:28px;width:55%;border-radius:8px;background:var(--surface)}.share-skeleton div:first-child{height:64px;width:80%}.share-skeleton div:last-child{height:160px;width:100%;margin-top:24px}
+.share-reveal.will-reveal{opacity:0;transform:translateY(12px);transition:opacity 600ms cubic-bezier(.2,.8,.2,1),transform 600ms cubic-bezier(.2,.8,.2,1)}
+.share-reveal.will-reveal.is-visible{opacity:1;transform:none}
+@media(max-width:600px){.share-page{padding-inline:16px}.share-top{min-height:72px}.share-intro{padding:44px 0 26px}.share-stats.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.share-stat.tile{min-height:90px}.share-body{grid-template-columns:1fr;padding:24px;gap:12px}.share-body .bodymap{max-width:320px}.share-work{margin-top:60px}.share-exercise{grid-template-columns:100px minmax(0,1fr);gap:14px}.share-media{aspect-ratio:1}.share-exercise-head{display:block}.share-exercise-head h3{font-size:17px}.share-superset{display:inline-block;margin-top:8px}.share-sets li{gap:7px;font-size:13px}.share-coach{grid-template-columns:1fr;padding:24px}.share-footer{margin-top:64px}}
+@media(prefers-reduced-motion:reduce){.share-reveal.will-reveal{opacity:1;transform:none}}
+
+.share-link-sheet{display:grid;gap:10px}.share-link-sheet h3{margin-bottom:0}.share-link-sheet input{font-size:14px;margin:6px 0}.share-link-sheet a.btn{display:flex;align-items:center;justify-content:center;text-decoration:none}.share-fallback{text-align:center;margin:2px 8px 10px}.shared-pages{padding:12px 16px}.shared-page-row{display:flex;align-items:center;gap:12px;padding:12px 0}.shared-page-row+.shared-page-row{border-top:var(--hair) solid var(--sep)}.shared-page-row>div:first-child{flex:1;min-width:0;overflow-wrap:anywhere}.shared-page-row strong{font-size:15px}.shared-page-row a{font-size:14px;font-weight:600}
+
 /* AI handoff: the same controls travel with workouts, routines and profile instructions. */
 .center:has(.finish-summary){width:min(calc(100vw - 32px),520px)}
 .ai-buttons{display:grid;gap:8px;text-align:center}

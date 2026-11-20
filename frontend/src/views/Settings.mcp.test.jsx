@@ -34,6 +34,7 @@ vi.mock('../store/useUI.js', () => {
   return { useUI }
 })
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {} }))
+vi.mock('../lib/share-snapshot.js', () => ({ listShares: vi.fn().mockResolvedValue({ shares: [] }), revokeShare: vi.fn() }))
 vi.mock('../lib/api.js', () => ({
   api: (...args) => mocks.api(...args), webauthnOK: () => false,
   passkeyLogin: vi.fn(), passkeyRegister: vi.fn(), IS_ANDROID: false,

@@ -36,6 +36,13 @@ const state = {
   })],
 }
 
+describe('provider prompts', () => {
+  it('tailors the same workout to each coach', () => {
+    expect(handoff.providerPrompt('chatgpt', 'SESSION')).toMatch(/saved memory.*progress log.*next session[\s\S]*SESSION/i)
+    expect(handoff.providerPrompt('claude', 'SESSION')).toMatch(/Project.*debrief.*adjustment[\s\S]*SESSION/i)
+  })
+})
+
 describe('athleteOf', () => {
   it('exports the empty profile and the exact picker catalogs', () => {
     expect(ATHLETE_DEFAULT).toEqual({ sex: null, birthYear: null, heightCm: null, experience: null, goal: null, injuries: '', healthSources: [], notes: '' })

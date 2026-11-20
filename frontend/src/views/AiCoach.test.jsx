@@ -84,6 +84,15 @@ describe('AI coach and routine page', () => {
     expect(useStore.getState().S.athlete.heightCm).toBe(177.8)
     expect(inches.value).toBe('10')
   })
+  it('lists and removes hosted pages in Settings', async () => {
+    useStore.setState({ user: { id: 'u1', name: 'Alex' } })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => ({ ok: true, json: async () => url === '/api/shares' ? { shares: [{ id: 'abc123def456', title: 'Upper strength', createdAt: '2026-11-19T12:00:00Z' }] } : { ok: true } }))
+    await act(async () => { mount(<Settings />); await Promise.resolve(); await Promise.resolve() })
+    expect(host.textContent).toContain('Upper strength')
+    await act(async () => button('Remove').click())
+    expect(fetch.mock.calls.some(([url, opts]) => url === '/api/shares/revoke' && JSON.parse(opts.body).id === 'abc123def456')).toBe(true)
+    expect(host.textContent).not.toContain('Upper strength')
+  })
   it('does not report a canceled native share as an error', async () => {
     const toast = vi.fn()
     useStore.getState().S.routines[0].name = 'Strength'
@@ -92,7 +101,7 @@ describe('AI coach and routine page', () => {
     Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true })
     Object.defineProperty(navigator, 'share', { configurable: true, value: vi.fn().mockRejectedValue(new Error('Share canceled')) })
     mount(<RoutineEdit />)
-    await act(async () => button('Share as page').click())
+    await act(async () => button('Download page').click())
     expect(toast).not.toHaveBeenCalled()
     delete navigator.canShare; delete navigator.share
   })
@@ -101,10 +110,10 @@ describe('AI coach and routine page', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     mount(<RoutineEdit />)
-    await act(async () => button('Share as page').click())
+    await act(async () => button('Download page').click())
     expect(click).toHaveBeenCalled()
     expect(click.mock.instances[0].download).toMatch(/\.html$/)
-    await act(async () => button('Share with ChatGPT').click())
+    await act(async () => button('Track it in ChatGPT').click())
     expect(mocks.copy.mock.calls[0][0]).toContain('Strength')
   })
 })

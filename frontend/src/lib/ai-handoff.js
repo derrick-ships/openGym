@@ -270,6 +270,13 @@ export const AI_PROVIDERS = {
   claude: { id: 'claude', name: 'Claude', base: 'https://claude.ai/new', query: 'https://claude.ai/new?q=' },
 }
 
+export function providerPrompt(providerId, baseText) {
+  const instruction = providerId === 'claude'
+    ? 'Keep this log in a Project if available. Give me a short coach debrief with one adjustment.'
+    : 'Update your saved memory and my progress log if available, and say what to aim for next session.'
+  return `${instruction}\n\n${baseText || ''}`
+}
+
 const providerOf = id => Object.hasOwn(AI_PROVIDERS, id) ? AI_PROVIDERS[id] : AI_PROVIDERS.chatgpt
 
 function queryUrl(provider, text) {

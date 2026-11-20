@@ -22,11 +22,14 @@ afterEach(() => { act(() => root.unmount()); host.remove(); open.mockRestore() }
 const button = text => [...host.querySelectorAll('button')].find(el => el.textContent.includes(text))
 
 describe('AI handoff buttons', () => {
-  it.each([['Share with ChatGPT', 'https://chatgpt.com/?q=my%20workout'], ['Claude', 'https://claude.ai/new?q=my%20workout']])('copies before opening %s', async (label, url) => {
+  it.each([['Track it in ChatGPT', 'https://chatgpt.com/', /saved memory.*progress log/is], ['Review it with Claude', 'https://claude.ai/new', /Project.*debrief.*adjustment/is]])('copies the tailored prompt before opening %s', async (label, base, prompt) => {
     await act(async () => button(label).click())
-    expect(mocks.copy).toHaveBeenCalledWith('my workout')
-    expect(open).toHaveBeenCalledWith(url, '_blank', 'noopener')
+    const text = mocks.copy.mock.calls[0][0]
+    expect(text).toContain('my workout')
+    expect(text).toMatch(prompt)
+    expect(open).toHaveBeenCalledWith(`${base}?q=${encodeURIComponent(text)}`, '_blank', 'noopener')
     expect(mocks.copy.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0])
+    expect(button(label).querySelector('svg path')).toBeTruthy()
   })
   it('uses the base URL and asks for a paste when text is too long', async () => {
     act(() => root.render(<AiShareButtons getText={() => 'x'.repeat(8000)} />))
@@ -37,7 +40,8 @@ describe('AI handoff buttons', () => {
   it('still opens the provider when copying fails', async () => {
     mocks.copy.mockRejectedValueOnce(new Error('clipboard unavailable'))
     await act(async () => button('Claude').click())
-    expect(open).toHaveBeenCalledWith('https://claude.ai/new?q=my%20workout', '_blank', 'noopener')
+    expect(open.mock.calls[0][0]).toMatch(/^https:\/\/claude\.ai\/new\?q=/)
+    expect(decodeURIComponent(open.mock.calls[0][0])).toContain('my workout')
     expect(mocks.toast).toHaveBeenCalledWith(expect.stringMatching(/copy/i))
   })
 })

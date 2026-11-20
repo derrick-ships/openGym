@@ -4,6 +4,7 @@ import {
   athleteOf, progressSnapshot, coachSkillText, previousComparable, sessionComparison,
   sessionHandoffText, routineHandoffText, aiDeepLink,
 } from './ai-handoff.js'
+import * as handoff from './ai-handoff.js'
 import { sessionShareText } from './session-share.js'
 import { routineShareText } from './plan-share.js'
 
@@ -17,12 +18,12 @@ const workout = (id, d, extra) => ({
 const previous = workout('previous', '2026-11-10', { vol: 800, entries: [
   { id: BENCH, sets: [reps(90, 3)] },
   { id: 'c-plank', target: { mode: 'time' }, sets: [hold(60)] },
-  { id: 'c-pullup', sets: [reps(0, 8)] },
+  { id: 'c-pullup', target: { bodyweight: true }, sets: [reps(0, 8)] },
 ] })
 const latest = workout('latest', '2026-11-17', { vol: 1000, entries: [
   { id: BENCH, target: { mode: 'reps' }, sets: [reps(150, 10, { phase: 'warmup' }), reps(120, 5, { done: false }), reps(92, 1), reps(80, 8)] },
   { id: 'c-plank', sets: [hold(90, { warmup: true }), hold(45)] },
-  { id: 'c-pullup', sets: [reps(0, 8)] },
+  { id: 'c-pullup', target: { bodyweight: true }, sets: [reps(0, 8)] },
   { id: 'c-row', muscleSnapshot: { n: 'Cable row' }, sets: [reps(40, 10)] },
   { id: 'c-warmup-only', sets: [reps(40, 10, { warmup: true })] },
   { id: '3637', target: { mode: 'cardio' }, sets: [{ min: 20, speed: 9, done: true }] },
@@ -79,7 +80,7 @@ describe('progressSnapshot', () => {
       { id: 'c-plank', name: 'Plank', sessions: 2, lastDate: '2026-11-17', bestSet: { sec: 60 }, est1RM: null },
       { id: 'c-pullup', name: 'Pull-up', sessions: 2, lastDate: '2026-11-17', bestSet: { w: 0, r: 8 }, est1RM: null },
       { id: 'c-row', name: 'Cable row', sessions: 1, lastDate: '2026-11-17', bestSet: { w: 40, r: 10 }, est1RM: 53.3 },
-    ]))
+    ].map(line => expect.objectContaining(line))))
     expect(progressSnapshot(state, { now: NOW, weeks: 1 }).workouts).toBe(1)
   })
 
@@ -111,7 +112,7 @@ describe('coachSkillText', () => {
     expect(text).toContain('at most 3')
     expect(text).toContain('RPE 7')
     expect(text).toContain('5–10%')
-    expect(text).toContain('proposals I approve')
+    expect(text).toContain('get_athlete_profile')
     expect(text).toContain('0 sessions')
     expect(text).not.toContain('Age:')
     expect(text).not.toContain('Body weight:')
@@ -129,7 +130,7 @@ describe('coachSkillText', () => {
     expect(text).toContain('Oura Ring, Apple Health')
     expect(text).toContain('Body weight: 178 lb')
     expect(text).toContain('101.3 lb estimated 1RM')
-    expect(text).toContain('Plank: 60 s')
+    expect(text).toMatch(/Plank: .*45 s.*2026-11-17.*60 s.*2026-11-10/)
     expect(text.length).toBeLessThan(6000)
   })
 })
@@ -200,8 +201,8 @@ describe('sessionHandoffText', () => {
     expect(text).toContain('Compared with my last Upper session (2026-11-10):')
     expect(text).toContain('+200 lb (+25%)')
     expect(text).toContain('Plank: 45 s vs 60 s (down)')
-    expect(text).toContain('Do not treat this session as a strength drop')
-    expect(text).toMatch(/If anything dropped compared with my usual numbers, ask me what happened before changing my loads \(sleep, sickness, pain, time\)\. Then tell me what to aim for next session\.$/)
+    expect(text).toContain('Do not treat lower numbers as lost strength')
+    expect(text).toContain('do not ask me again what happened')
   })
 
   it('allows context override, and omits the comparison and concern warning when not applicable', () => {
@@ -241,5 +242,105 @@ describe('routineHandoffText', () => {
     expect(text).toContain(routineShareText(S, routine))
     expect(text).toContain('My profile: Experience: intermediate; Goal: get stronger')
     expect(routineHandoffText({}, routine)).toContain('My profile: No profile details logged.')
+  })
+})
+
+
+describe('handoff review regressions', () => {
+  it.each(['sick', 'poor-sleep', 'pain', 'short-time', 'low-energy', 'stressed'])('uses %s as off-day context instead of re-asking', flag => {
+    const text = sessionHandoffText(state, latest, { context: { flags: [flag] } })
+    expect(text).toContain('Do not treat lower numbers as lost strength')
+    expect(text).toContain('do not ask me again what happened')
+    expect(text).toContain('tell me whether and how to adjust next session')
+  })
+
+  it('asks what happened only on a drop without context', () => {
+    expect(sessionHandoffText(state, latest)).toContain('ask me what happened before changing my loads')
+    for (const context of [{ note: 'Travel day' }, { flags: ['great'] }]) {
+      const text = sessionHandoffText(state, latest, { context })
+      expect(text).toContain('How it went:')
+      expect(text).toContain('do not ask me again what happened')
+      expect(text).not.toContain('ask me what happened before changing my loads')
+    }
+    expect(sessionHandoffText({}, latest)).not.toContain('ask me what happened')
+  })
+
+  it('retains the dates of latest and best sets, and explains snapshot scope', () => {
+    expect(progressSnapshot(state, { now: NOW }).exercises.find(ex => ex.id === 'c-plank')).toMatchObject({
+      lastSet: { sec: 45 }, lastDate: '2026-11-17', bestSet: { sec: 60 }, bestDate: '2026-11-10',
+    })
+    const text = coachSkillText(state, { now: NOW })
+    expect(text).toContain('This is a snapshot of my top exercises from the last 8 weeks; ask me about anything not listed instead of treating it as new.')
+    expect(text).toContain("For an exercise with no history, ask me for a starting weight; if I don't know, give a conservative range clearly labelled as a guess and aim for about RPE 7.")
+    expect(text).toContain('If the openGym MCP is connected, read my profile (get_athlete_profile), workouts, estimated 1RM and muscle balance from it instead of asking me. Suggest routine changes as proposals for me to approve when your connection allows it.')
+  })
+
+  it('distinguishes added weight from body weight and never estimates bodyweight 1RM', () => {
+    const current = { ...latest, entries: [
+      { id: '0001', sets: [reps(0, 10)] },
+      { id: 'c-pullup', target: { bodyweight: true }, sets: [reps(20, 8)] },
+    ] }
+    const S = { ...state, unit: 'kg', workouts: [current] }
+    const text = coachSkillText(S, { now: NOW })
+    expect(text).toContain('bodyweight × 10')
+    expect(text).toContain('Pull-up: +20 kg × 8')
+    expect(progressSnapshot(S, { now: NOW }).exercises.map(ex => ex.est1RM)).toEqual([null, null])
+  })
+
+  it('keeps timed loads and uses them to break a tie at equal times', () => {
+    const before = { ...previous, entries: [{ id: 'c-plank', sets: [hold(45, { w: 5 })] }] }
+    const current = { ...latest, entries: [{ id: 'c-plank', sets: [hold(44, { w: 20 }), hold(45, { w: 10 })] }] }
+    const S = { ...state, workouts: [before] }
+    expect(sessionComparison(S, current).exercises[0]).toMatchObject({ now: { sec: 45, w: 10 }, before: { sec: 45, w: 5 }, change: 'up' })
+    expect(sessionHandoffText(S, current)).toContain('Plank: 45 s · 10 lb vs 45 s · 5 lb (up)')
+  })
+
+  it('coerces numeric strings, enforces age and height limits, and caps trimmed text', () => {
+    const result = athleteOf({ athlete: {
+      birthYear: ' 1920 ', heightCm: '272', sex: ' s '.repeat(100), notes: 'x'.repeat(1050), injuries: 'y'.repeat(1050),
+    } }, { now: NOW })
+    expect(result).toMatchObject({ birthYear: 1920, heightCm: 272 })
+    expect(result.sex).toHaveLength(100)
+    expect(result.notes).toHaveLength(1000)
+    expect(result.injuries).toHaveLength(1000)
+    expect(athleteOf({ athlete: { birthYear: '1915', heightCm: '273' } }, { now: NOW })).toEqual(ATHLETE_DEFAULT)
+    expect(athleteOf({ athlete: { birthYear: '2022', heightCm: '49' } }, { now: NOW })).toEqual(ATHLETE_DEFAULT)
+  })
+
+  it('repairs lone UTF-16 surrogates and uses the same encoded length for the fit check', () => {
+    const text = '🏋\uD800X\uDC00'
+    const query = 'https://claude.ai/new?q=%F0%9F%8F%8B%EF%BF%BDX%EF%BF%BD'
+    expect(aiDeepLink('claude', text)).toBe(query)
+    expect(handoff.deepLinkFits('claude', text, { maxUrl: query.length })).toBe(true)
+    expect(handoff.deepLinkFits('claude', text, { maxUrl: query.length - 1 })).toBe(false)
+    expect(aiDeepLink('claude', text, { maxUrl: query.length - 1 })).toBe('https://claude.ai/new')
+  })
+
+  it('uses the routine handoff clock for approximate age', () => {
+    const text = routineHandoffText({ athlete: { birthYear: '2000' } }, {}, { now: Date.parse('2030-06-15T12:00:00Z') })
+    expect(text).toContain('Age: about 30')
+  })
+
+  it('reads the latest eligible weigh-in by local date, not array position', () => {
+    const now = new Date(2026, 10, 19, 23, 30).getTime()
+    expect(progressSnapshot({ bodyweight: [
+      { d: '2026-11-19', w: 80 }, { d: '2026-11-20', w: 90 }, { d: '2026-11-18', w: 79 },
+    ] }, { now }).bodyWeight).toBe(80)
+  })
+
+  it('accepts an unset state and null records in saved history or a shared session', () => {
+    expect(athleteOf(undefined)).toEqual(ATHLETE_DEFAULT)
+    expect(progressSnapshot(undefined, { now: NOW }).workouts).toBe(0)
+    expect(progressSnapshot({ workouts: [null, { ...latest, entries: [null, latest.entries[0]] }] }, { now: NOW }).exercises).toHaveLength(1)
+    expect(previousComparable(undefined, latest)).toBeNull()
+    expect(sessionHandoffText(undefined, { entries: [null] })).toContain('Exercises:')
+  })
+
+  it('omits stretching from attendance and only compares it with other stretches', () => {
+    const stretch = workout('stretch', '2026-11-16', { kind: 'stretching' })
+    const workouts = [previous, stretch]
+    expect(progressSnapshot({ workouts }, { now: NOW })).toMatchObject({ workouts: 1, sessionsPerWeek: 1 / 8 })
+    expect(previousComparable({ workouts }, latest)).toBe(previous)
+    expect(previousComparable({ workouts }, { ...latest, kind: 'stretching' })).toBe(stretch)
   })
 })

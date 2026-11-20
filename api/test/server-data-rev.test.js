@@ -219,6 +219,65 @@ test('legacy data receipt omits unknown numeric rev on retry after an intervenin
   assert.equal((await after.json()).rev, 2);
 });
 
+test('MCP state exposes the athlete profile only with bodyweight:read', async t => {
+  const uid = 'u_rev_1';
+  const athlete = { birthYear: 1991, injuries: 'Shoulder', healthSources: ['oura'] };
+  const h = await startServer(t, {
+    env: { MCP_ENABLED: '1' },
+    prepare: dataDir => {
+      fs.writeFileSync(path.join(dataDir, `state-${uid}.json`), JSON.stringify({ athlete, unit: 'lb' }));
+      fs.writeFileSync(path.join(dataDir, 'mcp-grants.json'), JSON.stringify({ grants: [
+        { uid, id: 'bodyweight-grant', tokenHash: digest('weigh-ins'), scopes: ['bodyweight:read'] },
+        { uid, id: 'workout-grant', tokenHash: digest('history'), scopes: ['workout:read'] }
+      ] }));
+    }
+  });
+  const snapshot = (scope, token) => fetch(`${h.api}/api/mcp/state?scope=${scope}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const bodyweight = await snapshot('bodyweight:read', 'weigh-ins');
+  assert.equal(bodyweight.status, 200);
+  assert.deepEqual((await bodyweight.json()).state, { unit: 'lb', athlete, bodyweight: [], targetW: null });
+  assert.equal((await snapshot('bodyweight:read', 'history')).status, 403);
+  const workouts = await snapshot('workout:read', 'history');
+  assert.equal(workouts.status, 200);
+  assert.deepEqual((await workouts.json()).state, { unit: 'lb', workouts: [] });
+});
+
+test('POST /api/mcp/workouts persists allowed context flags and trims the note', async t => {
+  const uid = 'u_rev_1';
+  const token = 'workout-context-token';
+  const h = await startServer(t, {
+    env: { MCP_ENABLED: '1' },
+    prepare: dataDir => fs.writeFileSync(path.join(dataDir, 'mcp-grants.json'), JSON.stringify({ grants: [{
+      uid, id: 'context-grant', tokenHash: digest(token), scopes: ['workout:write', 'workout:read']
+    }] }))
+  });
+  const auth = { Authorization: `Bearer ${token}` };
+  const flags = ['poor-sleep', 'sick', 'pain', 'short-time', 'low-energy', 'stressed', 'great'];
+  const note = 'x'.repeat(500);
+  const payload = { d: '2026-09-01', entries: [{ id: '0025', sets: [{ done: true, w: 60, r: 5 }] }] };
+  const post = (id, revision, context) => fetch(`${h.api}/api/mcp/workouts`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json', 'If-Match': revision, 'Idempotency-Key': id },
+    body: JSON.stringify({ workout: { ...payload, id, context } })
+  });
+
+  const created = await post('with-context', '"0"', {
+    flags: [...flags, 'bogus', 'pain', 'Pain'], note: `  ${note}extra  `
+  });
+  const result = await created.json();
+  assert.equal(created.status, 201, JSON.stringify(result));
+  assert.deepEqual(result.workout.context, { flags, note });
+  const legacy = await post('without-context', result.revision);
+  assert.equal(legacy.status, 201);
+  const readback = await fetch(`${h.api}/api/mcp/state?scope=workout:read`, { headers: auth });
+  assert.equal(readback.status, 200);
+  const [withContext, withoutContext] = (await readback.json()).state.workouts;
+  assert.deepEqual(withContext.context, { flags, note });
+  assert.equal(Object.hasOwn(withoutContext, 'context'), false);
+});
+
 test('legacy MCP workout receipt omits unknown numeric rev on retry after an intervening write', async t => {
   const uid = 'u_rev_1';
   const token = 'legacy-mcp-token';

@@ -436,6 +436,61 @@ describe('get_workout', () => {
   })
 })
 
+test('workout reads include only flags and note when context exists, and omit context for older sessions', () => {
+  const d = '2026-07-26'
+  const context = { flags: ['poor-sleep', 'short-time'], note: 'Cut accessories short.' }
+  S.workouts = [
+    { id: 'with-context', d, entries: [], context: { ...context, extra: 'not part of context' } },
+    { id: 'legacy', d, entries: [] }
+  ]
+
+  for (const workouts of [call('list_workouts').workouts, call('get_workout', { date: d }).workouts]) {
+    expect(workouts.find(w => w.id === 'with-context').context).toEqual(context)
+    expect(workouts.find(w => w.id === 'legacy')).not.toHaveProperty('context')
+  }
+  expect(call('get_workout', { workout_id: 'with-context' }).context).toEqual(context)
+  expect(call('get_workout', { workout_id: 'legacy' })).not.toHaveProperty('context')
+})
+
+/* ---------- get_athlete_profile ---------- */
+
+describe('get_athlete_profile', () => {
+  test('returns the saved fields, age from birth year, and the latest dated weigh-in in the profile unit', () => {
+    S.unit = 'lb'
+    S.bodyweight = [{ d: '2026-07-26', w: 172 }, { d: '2026-07-25', w: 173 }]
+    S.athlete = {
+      sex: 'female', birthYear: 1991, heightCm: 168, experience: 'intermediate',
+      goal: 'strength', injuries: 'None', healthSources: ['oura'], notes: 'Trains at home.',
+      extra: 'not part of the profile'
+    }
+
+    expect(call('get_athlete_profile')).toEqual({
+      sex: 'female', birthYear: 1991, heightCm: 168, experience: 'intermediate',
+      goal: 'strength', injuries: 'None', healthSources: ['oura'], notes: 'Trains at home.',
+      unit: 'lb', age: 35, latest_bodyweight: { date: '2026-07-26', weight: 172 }, missing: []
+    })
+  })
+
+  test('a missing profile reports unknowns without borrowing the avatar setting', () => {
+    delete S.athlete
+    S.body = 'male'
+    S.bodyweight = []
+    expect(call('get_athlete_profile')).toEqual({
+      sex: null, birthYear: null, heightCm: null, experience: null, goal: null, injuries: null,
+      healthSources: null, notes: null, age: null, unit: 'kg', latest_bodyweight: null,
+      missing: ['sex', 'birthYear', 'heightCm', 'experience', 'goal', 'injuries', 'healthSources', 'notes', 'latest_bodyweight']
+    })
+  })
+
+  test('a partial profile distinguishes no connected sources from an unanswered field', () => {
+    S.athlete = { goal: 'strength', notes: ' ', healthSources: [] }
+    const profile = call('get_athlete_profile')
+    expect(profile.healthSources).toEqual([])
+    expect(profile.notes).toBeNull()
+    expect(profile.missing).toEqual(['sex', 'birthYear', 'heightCm', 'experience', 'injuries', 'notes'])
+  })
+})
+
 /* ---------- get_bodyweight ---------- */
 
 describe('get_bodyweight', () => {

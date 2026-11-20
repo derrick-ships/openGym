@@ -39,7 +39,8 @@ const scopes = {
   list_exercises: 'exercise:read', search_exercises: 'exercise:read', get_exercise: 'exercise:read',
   list_routines: 'routine:read', get_routine: 'routine:read', preview_session: 'routine:read', get_week_plan: 'routine:read',
   list_equipment_profiles: 'equipment:read',
-  list_workouts: 'workout:read', get_workout: 'workout:read', get_bodyweight: 'bodyweight:read',
+  list_workouts: 'workout:read', get_workout: 'workout:read',
+  get_bodyweight: 'bodyweight:read', get_athlete_profile: 'bodyweight:read',
   estimate_1rm: 'progress:read', muscle_balance: 'progress:read', create_workout: 'workout:write'
 }
 const OAUTH_SCOPES = [...new Set([
@@ -582,7 +583,7 @@ const scopeCopy = {
   'exercise:read': ['View exercises', 'Browse the OpenGym exercise catalogue.'],
   'routine:read': ['View routines', 'See your saved routines and training plans.'],
   'workout:read': ['View workout history', 'Review completed workouts and session details.'],
-  'bodyweight:read': ['View bodyweight', 'Read your bodyweight measurements.'],
+  'bodyweight:read': ['View bodyweight and athlete profile', 'Read your weigh-ins and any athlete profile details you saved, including injuries and connected health sources.'],
   'progress:read': ['View progress', 'Read progress trends and training insights.'],
   'workout:write': ['Create workouts', 'Record completed workouts in your OpenGym account.'],
   'exercise:write': ['Edit exercises', 'Create and update your custom exercise metadata and instruction steps.'],

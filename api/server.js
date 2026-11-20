@@ -239,7 +239,8 @@ const WORKOUT_SET_FIELDS = new Set(['done', 'w', 'r', 'sec', 'min', 'speed', 'ri
 const WORKOUT_TARGET_NUMERIC = new Set(['sets', 'reps', 'repsMin', 'repsMax', 'sec', 'min', 'speed', 'weight', 'inc', 'bw', 'restSec', 'deloadFactor']);
 const WORKOUT_TARGET_TEXT = new Set(['mode', 'sg', 'policy', 'prog', 'note']);
 const WORKOUT_ENTRY_FIELDS = new Set(['id', 'sets', 'target', 'rid', 'noProg', 'note', 'notePin', 'topW']);
-const WORKOUT_FIELDS = new Set(['id', 'd', 'start', 'end', 'routineIds', 'routineId', 'routineKinds', 'kind', 'name', 'bw', 'note', 'entries', 'prs', 'vol', 'backfill', 'excludeFromProgression']);
+const WORKOUT_FIELDS = new Set(['id', 'd', 'start', 'end', 'routineIds', 'routineId', 'routineKinds', 'kind', 'name', 'bw', 'note', 'context', 'entries', 'prs', 'vol', 'backfill', 'excludeFromProgression']);
+const WORKOUT_CONTEXT_FLAGS = new Set(['poor-sleep', 'sick', 'pain', 'short-time', 'low-energy', 'stressed', 'great']);
 
 function workoutDate(value) {
   const text = String(value || '');
@@ -261,6 +262,14 @@ function workoutText(value, max) {
   if (typeof value !== 'string') return null;
   const text = value.trim();
   return text && text.length <= max ? text : null;
+}
+
+function cleanWorkoutContext(context) {
+  if (context == null) return null;
+  if (typeof context !== 'object' || Array.isArray(context)) return undefined;
+  const { flags = [], note = '' } = context;
+  if (!Array.isArray(flags) || typeof note !== 'string') return undefined;
+  return { flags: [...new Set(flags.filter(flag => WORKOUT_CONTEXT_FLAGS.has(flag)))], note: note.trim().slice(0, 500) };
 }
 
 function cleanWorkoutTarget(target) {
@@ -520,6 +529,8 @@ function cleanCompletedWorkout(input, state) {
   if (input.bw != null && bw == null) return { error: 'workout bodyweight is invalid' };
   const note = input.note == null ? null : workoutText(input.note, WORKOUT_MAX_NOTE);
   if (input.note != null && note == null) return { error: 'workout note is invalid' };
+  const context = cleanWorkoutContext(input.context);
+  if (context === undefined) return { error: 'workout context is invalid' };
   const routineId = input.routineId == null ? (routineIds[0] || null) : input.routineId;
   if (routineId != null && (!isSafeId(routineId) || !routineSet.has(String(routineId)) || !routineIds.some(value => String(value) === String(routineId)))) return { error: 'workout routine id is invalid' };
   for (const entry of entries) {
@@ -539,7 +550,8 @@ function cleanCompletedWorkout(input, state) {
       ...(input.kind === 'stretching' ? { kind: input.kind } : {}),
       ...(routineKinds ? { routineKinds: { ...routineKinds } } : {}),
       name, bw, entries, prs: [], vol: metrics.vol,
-      ...(allNoProg ? { excludeFromProgression: true } : {}), ...(note ? { note } : {})
+      ...(allNoProg ? { excludeFromProgression: true } : {}), ...(note ? { note } : {}),
+      ...(context ? { context } : {})
     }, backfill: input.backfill === true
   };
 }
@@ -2057,7 +2069,7 @@ const routes = {
     if (scope === 'exercise:read') state.customEx = S.customEx || [];
     if (scope === 'routine:read') Object.assign(state, { routines: S.routines || [], week: S.week || {}, dayPlan: S.dayPlan || {}, customEx: S.customEx || [] });
     if (scope === 'workout:read') state.workouts = S.workouts || [];
-    if (scope === 'bodyweight:read') Object.assign(state, { bodyweight: S.bodyweight || [], targetW: S.targetW || null });
+    if (scope === 'bodyweight:read') Object.assign(state, { bodyweight: S.bodyweight || [], targetW: S.targetW || null, athlete: S.athlete });
     if (scope === 'progress:read') Object.assign(state, { workouts: S.workouts || [], routines: S.routines || [], customEx: S.customEx || [], exWeights: S.exWeights || {} });
     if (scope === 'equipment:read') Object.assign(state, { equipProfiles: S.equipProfiles || [], activeEquipId: S.activeEquipId || null, equipFilterOn: S.equipFilterOn === true });
     json(res, 200, { state, revision: record.etag });

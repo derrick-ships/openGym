@@ -87,7 +87,7 @@ the server's stderr.
 
 ## Tools
 
-Twelve read-only tools plus two proposal/readback tools are available:
+The local stdio server and the scoped HTTP gateway share these read tools:
 
 | Tool | What it answers |
 |---|---|
@@ -95,9 +95,11 @@ Twelve read-only tools plus two proposal/readback tools are available:
 | `get_routine` | What does the Push Day routine prescribe? (sets/reps/weight and rest per exercise) |
 | `preview_session` | What will the app actually put on screen when I start this routine — after the progression policy and my history have overridden the plan? |
 | `get_week_plan` | What's on my plan this week, including today with any date-specific override? |
-| `list_workouts` | Recent sessions — newest first, with dates, sets done/planned, volume, duration, PRs. |
-| `get_workout` | Full set-by-set breakdown of one session, by `workout_id` or by date. On a day with two sessions the date alone returns both ids to pick from rather than guessing at one. |
+| `list_workouts` | Recent sessions — newest first, with dates, sets done/planned, volume, duration, PRs, and any session context. |
+| `get_workout` | Full set-by-set breakdown and any session context, by `workout_id` or by date. On a day with two sessions the date alone returns both IDs to pick from rather than guessing at one. |
 | `get_bodyweight` | Weigh-ins with the latest weight, the goal line, and deltas vs goal. |
+| `get_athlete_profile` | Saved athlete details, approximate age, weight unit, latest weigh-in, and which health sources the athlete has recorded. No arguments; HTTP requires `bodyweight:read`. |
+| `list_equipment_profiles` | Saved equipment profiles and which one the exercise picker uses. |
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `list_exercises`, `search_exercises`, `get_exercise` | Traverse the built-in and profile custom exercise catalogue. |
@@ -109,7 +111,14 @@ easiest way for a coach to give wrong advice. `get_routine` reports what the rou
 `preview_session` reports what the athlete will actually *see*: a routine holding "squat 3×8 @
 60 kg" opens at 75 kg if the policy deloaded from the last logged session, and the rep counts
 come from history, not the plan. The routine's own numbers are the last fallback the session
-builder consults, not the first. Ask `preview_session` before naming a weight.
+builder consults, not the first. Ask `preview_session` before reporting what the app will show.
+
+Call `get_athlete_profile` before prescribing loads. Unanswered fields are `null` and listed in
+`missing`; ask about the ones relevant to the recommendation rather than guessing. The latest
+weigh-in is returned as `latest_bodyweight: { date, weight }` in the reported `unit`, or `null`
+if there is no log. Connected sources are names recorded by the athlete, not health data from
+those services. Check the workout's `context.flags` and `context.note`, when present, before
+treating a performance drop as lost strength.
 
 Each tool returns JSON the LLM can format as it likes; structured fields (sets, dates, levels)
 are pre-formatted into human-readable labels in `src/labels.js` so the LLM doesn't need to

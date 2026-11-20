@@ -22,6 +22,19 @@ import { buildSessionEntries } from '../../frontend/src/lib/session-start.js'
 const stateOf = context => context && Object.prototype.hasOwnProperty.call(context, 'state') ? context.state : getState()
 const exFor = (id, S) => (S?.customEx || []).find(e => e.id === id) || exOr(id)
 
+function workoutContextFields({ context }) {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return {}
+  return { context: { flags: context.flags ?? [], note: context.note ?? '' } }
+}
+
+function chronologicalWeighIns(S, { from, to } = {}) {
+  return (S.bodyweight || []).filter(b => {
+    if (from && b.d < from) return false
+    if (to && b.d > to) return false
+    return true
+  }).sort((a, b) => (a.d || '').localeCompare(b.d || ''))
+}
+
 // A custom exercise lives in S.customEx and is merged into EXIDX by registerCustom() at
 // store load (useStore.js:54). The MCP server deliberately never calls it: http.js serves
 // several profiles from one process behind withRemoteState, so mutating the module-global
@@ -98,7 +111,7 @@ function prTable(S, formula) {
   return [...byId.values()].sort((a, b) => b.est - a.est)
 }
 
-/* ---------- the 8 tools ---------- */
+/* ---------- read tools ---------- */
 
 /** list_exercises — complete paginated built-in + custom catalogue, without private URLs. */
 export const listExercises = {
@@ -295,7 +308,7 @@ export const listEquipmentProfiles = {
 /** list_workouts — newest-first summary of recent sessions. */
 export const listWorkouts = {
   name: 'list_workouts',
-  description: 'List recent finished workouts, newest first. Each item summarises the date, exercise count, sets done / planned, total volume (in the user\'s unit), duration and whether PRs were set. Use this before drilling into a specific date with get_workout.',
+  description: 'List recent finished workouts, newest first. Each item summarises the date, exercise count, sets done / planned, total volume (in the user\'s unit), duration, whether PRs were set, and any session context (flags and note). Read the context before treating a performance drop as lost strength. Use this before drilling into a specific date with get_workout.',
   schema: {
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Inclusive start date YYYY-MM-DD. Defaults to no lower bound (list most recent).'),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Inclusive end date YYYY-MM-DD. Defaults to today.'),
@@ -331,7 +344,8 @@ export const listWorkouts = {
         duration_ms: w.end && w.start ? (w.end - w.start) : null,
         duration: w.end && w.start ? friendlyDuration(w.end - w.start) : null,
         prs: (w.prs || []).length,
-        bodyweight_at_workout: w.bw || null
+        bodyweight_at_workout: w.bw || null,
+        ...workoutContextFields(w)
       }))
     }
   }
@@ -346,7 +360,7 @@ function plannedSets(w) {
 /** get_workout — full entry/set breakdown for one date. */
 export const getWorkout = {
   name: 'get_workout',
-  description: 'Get the full breakdown of one workout: every exercise, its mode (reps/time/cardio), the target, and per-set labels (e.g. "5 @ 60 kg", "1:30 · 20 kg"). Identify it by workout_id (from list_workouts) or by date. Use list_workouts first if you don\'t know either.',
+  description: 'Get the full breakdown of one workout: every exercise, its mode (reps/time/cardio), the target, and per-set labels (e.g. "5 @ 60 kg", "1:30 · 20 kg"). Identify it by workout_id (from list_workouts) or by date. Use list_workouts first if you don\'t know either. Read the session context (if logged) before treating a performance drop as lost strength.',
   schema: {
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('The workout date as YYYY-MM-DD. If two sessions share that date, the answer lists them instead and asks for a workout_id.'),
     workout_id: z.string().min(1).optional().describe('The id from list_workouts. Preferred: it names one session even on a day with two.')
@@ -374,7 +388,8 @@ export const getWorkout = {
             routine_name: x.name || null,
             sets_done: setsDone(x),
             volume: workoutVolume(x),
-            duration: x.end && x.start ? friendlyDuration(x.end - x.start) : null
+            duration: x.end && x.start ? friendlyDuration(x.end - x.start) : null,
+            ...workoutContextFields(x)
           }))
         }
       }
@@ -397,7 +412,8 @@ export const getWorkout = {
         const ex = exerciseOf(id, S)
         return ex.missing ? id : ex.n
       }),
-      entries: (w.entries || []).map(e => entryView(e, S))
+      entries: (w.entries || []).map(e => entryView(e, S)),
+      ...workoutContextFields(w)
     }
   }
 }
@@ -414,12 +430,8 @@ export const getBodyweight = {
     const S = stateOf(context)
     if (!S) return noState()
     const goal = S.targetW || null
-    const bw = (S.bodyweight || []).filter(b => {
-      if (from && b.d < from) return false
-      if (to && b.d > to) return false
-      return true
-    }).sort((a, b) => (a.d || '').localeCompare(b.d || ''))
-    const latest = bw.length ? bw[bw.length - 1] : null
+    const bw = chronologicalWeighIns(S, { from, to })
+    const latest = bw.at(-1)
     return {
       unit: S.unit || 'kg',
       goal,
@@ -434,10 +446,35 @@ export const getBodyweight = {
   }
 }
 
+const ATHLETE_FIELDS = ['sex', 'birthYear', 'heightCm', 'experience', 'goal', 'injuries', 'healthSources', 'notes']
+
+export const getAthleteProfile = {
+  name: 'get_athlete_profile',
+  description: 'Read the athlete’s saved profile, approximate age (from birth year), weight unit, latest weigh-in, and connected health sources. Call this before prescribing loads. Ask the user for relevant fields listed in missing rather than guessing.',
+  schema: {},
+  handler: (_, context) => {
+    const S = stateOf(context)
+    if (!S) return noState()
+    const profile = Object.fromEntries(ATHLETE_FIELDS.map(field => {
+      const value = S.athlete?.[field]
+      return [field, typeof value === 'string' ? value.trim() || null : value ?? null]
+    }))
+    const year = new Date().getFullYear()
+    const { birthYear } = profile
+    const age = Number.isInteger(birthYear) && birthYear > 0 && birthYear <= year ? year - birthYear : null
+    if (age === null) profile.birthYear = null
+    const latest = chronologicalWeighIns(S).at(-1)
+    const latest_bodyweight = latest ? { date: latest.d, weight: latest.w } : null
+    const missing = ATHLETE_FIELDS.filter(field => profile[field] === null)
+    if (!latest_bodyweight) missing.push('latest_bodyweight')
+    return { ...profile, age, unit: S.unit || 'kg', latest_bodyweight, missing }
+  }
+}
+
 /** estimate_1rm — best-ever 1RM for one exercise or a PR table across all reps-mode exercises. */
 export const estimate1rm = {
   name: 'estimate_1rm',
-  description: `Estimate one-rep max using Epley, Brzycki or Lombardi formulas. If an exercise_id is given, returns the all-time best estimate for that exercise with the source set (weight × reps + date) and the trend across history. If no exercise_id is given, returns a PR table across all reps-mode exercises (sorted highest first). Refuses to guess above ${REP_CAP} reps — above that, formulas diverge past 10% and "work capacity" is read instead of "maximal strength".`,
+  description: `Estimate one-rep max using Epley, Brzycki or Lombardi formulas. If an exercise_id is given, returns the all-time best estimate for that exercise with the source set (weight × reps + date) and the trend across history. If no exercise_id is given, returns a PR table across all reps-mode exercises (sorted highest first). Call get_athlete_profile before prescribing loads and read workout context before treating a trend drop as lost strength. Refuses to guess above ${REP_CAP} reps — above that, formulas diverge past 10% and "work capacity" is read instead of "maximal strength".`,
   schema: {
     exercise_id: z.string().optional().describe('An exercise id from list_routines or get_workout entries. If omitted, returns a full PR table.'),
     formula: z.enum(['epley', 'brzycki', 'lombardi']).optional().describe(`Formula to use. Defaults to ${DEFAULT_FORMULA}.`)
@@ -548,7 +585,7 @@ const SOURCE_TEXT = {
 export const previewSession = {
   name: 'preview_session',
   description:
-    'Preview the session a routine will actually open with — the numbers the user will see after the progression policy and their training history have overridden the routine\'s own targets. This is NOT the same as get_routine: a routine storing "squat 3x8 @ 60kg" can open at 75kg because the policy deloaded from the last logged session, and reps carry from history rather than from the plan. Always call this (not get_routine) before telling someone what weight they are about to lift, or before judging whether an edit to a routine had any effect. Returns, per exercise, the planned target, the policy\'s decision and its stated reason, the opening set rows, and where each number came from. Defaults to today\'s scheduled routine.',
+    'Preview the session a routine will actually open with — the numbers the user will see after the progression policy and their training history have overridden the routine\'s own targets. This is NOT the same as get_routine: a routine storing "squat 3x8 @ 60kg" can open at 75kg because the policy deloaded from the last logged session, and reps carry from history rather than from the plan. Always call this (not get_routine) before telling someone what weight they are about to lift, or before judging whether an edit to a routine had any effect. Call get_athlete_profile before prescribing loads. Returns, per exercise, the planned target, the policy\'s decision and its stated reason, the opening set rows, and where each number came from. Defaults to today\'s scheduled routine.',
   schema: {
     routine_id: z.string().min(1).optional().describe('Routine to preview. Defaults to the routine scheduled for `date`.'),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Date the session would be started on, YYYY-MM-DD. Affects which routine is scheduled and any one-off day override. Defaults to today.')
@@ -671,7 +708,7 @@ export const previewSession = {
 /* ---------- registration list ---------- */
 
 export const TOOLS = [
-  listExercises, searchExercises, getExercise, listRoutines, getRoutine, previewSession, getWeekPlan, listEquipmentProfiles, listWorkouts, getWorkout, getBodyweight, estimate1rm, muscleBalance
+  listExercises, searchExercises, getExercise, listRoutines, getRoutine, previewSession, getWeekPlan, listEquipmentProfiles, listWorkouts, getWorkout, getBodyweight, getAthleteProfile, estimate1rm, muscleBalance
 ]
 
 function noState() {

@@ -22,13 +22,27 @@ import { buildSessionEntries } from '../../frontend/src/lib/session-start.js'
 const stateOf = context => context && Object.prototype.hasOwnProperty.call(context, 'state') ? context.state : getState()
 const exFor = (id, S) => (S?.customEx || []).find(e => e.id === id) || exOr(id)
 
-function workoutContextFields({ context }) {
-  if (!context || typeof context !== 'object' || Array.isArray(context)) return {}
-  return { context: { flags: context.flags ?? [], note: context.note ?? '' } }
+const WORKOUT_CONTEXT_FLAGS = new Set(['poor-sleep', 'sick', 'pain', 'short-time', 'low-energy', 'stressed', 'great'])
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function boundedText(value, max) {
+  return typeof value === 'string' ? value.trim().slice(0, max).trimEnd() : ''
 }
 
-function chronologicalWeighIns(S, { from, to } = {}) {
-  return (S.bodyweight || []).filter(b => {
+function finiteNumber(value) {
+  if (typeof value === 'string' && value.trim()) value = Number(value)
+  return Number.isFinite(value) ? value : null
+}
+
+function workoutContextFields({ context }) {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return {}
+  const flags = Array.isArray(context.flags) ? [...new Set(context.flags.filter(flag => WORKOUT_CONTEXT_FLAGS.has(flag)))] : []
+  const note = boundedText(context.note, 500)
+  return flags.length || note ? { context: { flags, note } } : {}
+}
+
+function chronologicalWeighIns(entries, { from, to } = {}) {
+  return entries.filter(b => {
     if (from && b.d < from) return false
     if (to && b.d > to) return false
     return true
@@ -430,7 +444,7 @@ export const getBodyweight = {
     const S = stateOf(context)
     if (!S) return noState()
     const goal = S.targetW || null
-    const bw = chronologicalWeighIns(S, { from, to })
+    const bw = chronologicalWeighIns(S.bodyweight || [], { from, to })
     const latest = bw.at(-1)
     return {
       unit: S.unit || 'kg',
@@ -446,7 +460,22 @@ export const getBodyweight = {
   }
 }
 
-const ATHLETE_FIELDS = ['sex', 'birthYear', 'heightCm', 'experience', 'goal', 'injuries', 'healthSources', 'notes']
+function profileHealthSources(values) {
+  if (!Array.isArray(values)) return null
+  const sources = [...new Set(values.map(value => boundedText(value, 40)).filter(Boolean))].slice(0, 12)
+  return sources.length || !values.length ? sources : null
+}
+
+function latestProfileWeighIn(entries) {
+  if (!Array.isArray(entries)) return null
+  const valid = entries.flatMap(entry => {
+    if (typeof entry?.d !== 'string' || !ISO_DATE.test(entry.d)) return []
+    const w = finiteNumber(entry.w)
+    return w === null ? [] : [{ d: entry.d, w }]
+  })
+  const latest = chronologicalWeighIns(valid).at(-1)
+  return latest ? { date: latest.d, weight: latest.w } : null
+}
 
 export const getAthleteProfile = {
   name: 'get_athlete_profile',
@@ -455,17 +484,24 @@ export const getAthleteProfile = {
   handler: (_, context) => {
     const S = stateOf(context)
     if (!S) return noState()
-    const profile = Object.fromEntries(ATHLETE_FIELDS.map(field => {
-      const value = S.athlete?.[field]
-      return [field, typeof value === 'string' ? value.trim() || null : value ?? null]
-    }))
+    const athlete = S.athlete ?? {}
     const year = new Date().getFullYear()
-    const { birthYear } = profile
-    const age = Number.isInteger(birthYear) && birthYear > 0 && birthYear <= year ? year - birthYear : null
-    if (age === null) profile.birthYear = null
-    const latest = chronologicalWeighIns(S).at(-1)
-    const latest_bodyweight = latest ? { date: latest.d, weight: latest.w } : null
-    const missing = ATHLETE_FIELDS.filter(field => profile[field] === null)
+    const { birthYear } = athlete
+    const validBirthYear = Number.isInteger(birthYear) && birthYear >= Math.max(1900, year - 120) && birthYear <= year
+    const heightCm = finiteNumber(athlete.heightCm)
+    const profile = {
+      sex: boundedText(athlete.sex, 100) || null,
+      birthYear: validBirthYear ? birthYear : null,
+      heightCm: heightCm !== null && heightCm >= 50 && heightCm <= 272 ? heightCm : null,
+      experience: boundedText(athlete.experience, 100) || null,
+      goal: boundedText(athlete.goal, 100) || null,
+      injuries: boundedText(athlete.injuries, 1000) || null,
+      healthSources: profileHealthSources(athlete.healthSources),
+      notes: boundedText(athlete.notes, 1000) || null
+    }
+    const age = validBirthYear ? year - birthYear : null
+    const latest_bodyweight = latestProfileWeighIn(S.bodyweight)
+    const missing = Object.keys(profile).filter(field => profile[field] === null)
     if (!latest_bodyweight) missing.push('latest_bodyweight')
     return { ...profile, age, unit: S.unit || 'kg', latest_bodyweight, missing }
   }

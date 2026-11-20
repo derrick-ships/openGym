@@ -452,6 +452,25 @@ test('workout reads include only flags and note when context exists, and omit co
   expect(call('get_workout', { workout_id: 'legacy' })).not.toHaveProperty('context')
 })
 
+test('workout reads sanitize a stored context and omit contexts with no usable fields', () => {
+  const flags = ['poor-sleep', 'sick', 'pain', 'short-time', 'low-energy', 'stressed', 'great']
+  const note = 'x'.repeat(500)
+  const d = '2026-07-26'
+  S.workouts = [
+    { id: 'mixed', d, entries: [], context: { flags: [...flags, 'pain', 'other', {}], note: `${note}extra` } },
+    { id: 'flag-only', d, entries: [], context: { flags: ['great'], note: 12 } },
+    { id: 'empty', d, entries: [], context: { flags: 'poor-sleep', note: '  ' } }
+  ]
+
+  for (const workouts of [call('list_workouts').workouts, call('get_workout', { date: d }).workouts]) {
+    expect(workouts.find(w => w.id === 'mixed').context).toEqual({ flags, note })
+    expect(workouts.find(w => w.id === 'flag-only').context).toEqual({ flags: ['great'], note: '' })
+    expect(workouts.find(w => w.id === 'empty')).not.toHaveProperty('context')
+  }
+  expect(call('get_workout', { workout_id: 'mixed' }).context).toEqual({ flags, note })
+  expect(call('get_workout', { workout_id: 'empty' })).not.toHaveProperty('context')
+})
+
 /* ---------- get_athlete_profile ---------- */
 
 describe('get_athlete_profile', () => {
@@ -480,6 +499,72 @@ describe('get_athlete_profile', () => {
       healthSources: null, notes: null, age: null, unit: 'kg', latest_bodyweight: null,
       missing: ['sex', 'birthYear', 'heightCm', 'experience', 'goal', 'injuries', 'healthSources', 'notes', 'latest_bodyweight']
     })
+  })
+
+  test('invalid saved profile field types are missing, while valid numeric height strings and source IDs normalize', () => {
+    S.athlete = {
+      sex: true, experience: [], goal: { name: 'strength' }, injuries: 12, notes: [],
+      heightCm: '273', healthSources: 'oura'
+    }
+    const invalid = call('get_athlete_profile')
+    for (const field of ['sex', 'experience', 'goal', 'injuries', 'notes', 'heightCm', 'healthSources']) {
+      expect(invalid[field]).toBeNull()
+      expect(invalid.missing).toContain(field)
+    }
+
+    S.athlete = { heightCm: ' 181.5 ', healthSources: [' oura ', null, 'oura', '', false, '  whoop '] }
+    expect(call('get_athlete_profile')).toMatchObject({ heightCm: 181.5, healthSources: ['oura', 'whoop'] })
+    S.athlete.healthSources = [null, '  ', {}]
+    const noValidSources = call('get_athlete_profile')
+    expect(noValidSources.healthSources).toBeNull()
+    expect(noValidSources.missing).toContain('healthSources')
+    for (const heightCm of [49, -1, Infinity, '', false, [181]]) {
+      S.athlete.heightCm = heightCm
+      expect(call('get_athlete_profile').heightCm).toBeNull()
+    }
+    for (const heightCm of [50, 272]) {
+      S.athlete.heightCm = heightCm
+      expect(call('get_athlete_profile').heightCm).toBe(heightCm)
+    }
+  })
+
+  test('rejects implausible birth years and accepts the oldest allowed age', () => {
+    for (const birthYear of [1899, 1905, 2027, 1991.5]) {
+      S.athlete = { birthYear }
+      const invalid = call('get_athlete_profile')
+      expect(invalid).toMatchObject({ birthYear: null, age: null })
+      expect(invalid.missing).toContain('birthYear')
+    }
+    S.athlete = { birthYear: 1906 }
+    expect(call('get_athlete_profile')).toMatchObject({ birthYear: 1906, age: 120 })
+  })
+
+  test('caps coach-facing profile strings and unique source IDs after trimming', () => {
+    const text = 'x'.repeat(1100)
+    const source = 'y'.repeat(40)
+    S.athlete = {
+      sex: ` ${text} `, experience: text, goal: text, injuries: text, notes: text,
+      healthSources: [` ${source}ABC `, `${source}DEF`, ...Array.from({ length: 13 }, (_, i) => `source-${i}`)]
+    }
+    const profile = call('get_athlete_profile')
+    for (const field of ['sex', 'experience', 'goal']) expect(profile[field]).toBe('x'.repeat(100))
+    for (const field of ['injuries', 'notes']) expect(profile[field]).toBe('x'.repeat(1000))
+    expect(profile.healthSources).toEqual([source, ...Array.from({ length: 11 }, (_, i) => `source-${i}`)])
+  })
+
+  test('only valid dated numeric weigh-ins can become the latest bodyweight', () => {
+    S.bodyweight = [
+      { d: '2026-07-25', w: 171 }, { d: '2026-07-26', w: '172.5' }, null,
+      { d: '2026-07-27', w: Infinity }, { d: '2026-07-28', w: true },
+      { d: '2026-07-29', w: '' }, { d: 'later', w: 173 }, { d: '2026-7-31', w: 173 }
+    ]
+    expect(call('get_athlete_profile').latest_bodyweight).toEqual({ date: '2026-07-26', weight: 172.5 })
+    for (const bodyweight of [null, {}, 'not an array', [null, { d: '2026-07-26', w: 'nope' }]]) {
+      S.bodyweight = bodyweight
+      const profile = call('get_athlete_profile')
+      expect(profile.latest_bodyweight).toBeNull()
+      expect(profile.missing).toContain('latest_bodyweight')
+    }
   })
 
   test('a partial profile distinguishes no connected sources from an unanswered field', () => {

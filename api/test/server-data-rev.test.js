@@ -271,11 +271,15 @@ test('POST /api/mcp/workouts persists allowed context flags and trims the note',
   assert.deepEqual(result.workout.context, { flags, note });
   const legacy = await post('without-context', result.revision);
   assert.equal(legacy.status, 201);
+  const empty = await post('empty-context', (await legacy.json()).revision, { flags: ['bogus'], note: ' \t ' });
+  assert.equal(empty.status, 201);
+  assert.equal(Object.hasOwn((await empty.json()).workout, 'context'), false);
   const readback = await fetch(`${h.api}/api/mcp/state?scope=workout:read`, { headers: auth });
   assert.equal(readback.status, 200);
-  const [withContext, withoutContext] = (await readback.json()).state.workouts;
+  const [withContext, withoutContext, emptyContext] = (await readback.json()).state.workouts;
   assert.deepEqual(withContext.context, { flags, note });
   assert.equal(Object.hasOwn(withoutContext, 'context'), false);
+  assert.equal(Object.hasOwn(emptyContext, 'context'), false);
 });
 
 test('legacy MCP workout receipt omits unknown numeric rev on retry after an intervening write', async t => {

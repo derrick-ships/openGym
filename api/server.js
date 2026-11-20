@@ -269,7 +269,9 @@ function cleanWorkoutContext(context) {
   if (typeof context !== 'object' || Array.isArray(context)) return undefined;
   const { flags = [], note = '' } = context;
   if (!Array.isArray(flags) || typeof note !== 'string') return undefined;
-  return { flags: [...new Set(flags.filter(flag => WORKOUT_CONTEXT_FLAGS.has(flag)))], note: note.trim().slice(0, 500) };
+  const cleanFlags = [...new Set(flags.filter(flag => WORKOUT_CONTEXT_FLAGS.has(flag)))];
+  const cleanNote = note.trim().slice(0, 500);
+  return cleanFlags.length || cleanNote ? { flags: cleanFlags, note: cleanNote } : null;
 }
 
 function cleanWorkoutTarget(target) {

@@ -1,5 +1,9 @@
 import { MOBILE, shareBlob } from './mobile.js'
 
+export function isShareCancellation(error) {
+  return error?.name === 'AbortError' || error?.code === 'CANCELED' || /cancel/i.test(error?.message || '')
+}
+
 // Share a self-contained page when the platform supports files; otherwise download it.
 export async function shareHtmlPage(html, filename) {
   const blob = new Blob([html], { type: 'text/html' })

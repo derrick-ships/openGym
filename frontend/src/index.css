@@ -232,6 +232,10 @@ h4.sec{
 .ai-context-chips .chip{background:var(--surface-2);min-height:36px}
 .ai-context-chips .chip.on{background:var(--acc);color:var(--on-acc)}
 .ai-context-note{background:var(--surface-2);margin:14px 0;font-size:16px}
+.ai-session-card .ai-context-note::placeholder{color:#b8b8bd;opacity:1}
+:root[data-theme="light"] .ai-session-card .ai-context-note::placeholder{color:#65656d;opacity:1}
+.ai-context-chips .chip:disabled,.ai-context-note:disabled{opacity:.5;cursor:not-allowed}
+.ai-context-hint{margin-top:10px}
 .ai-profile{padding:16px;display:grid;gap:16px}
 .ai-profile-intro{margin:0}
 .ai-profile-grid{display:grid;gap:14px}

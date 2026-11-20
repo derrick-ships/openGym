@@ -31,7 +31,7 @@ import { MOBILE, shareExport, printHtml, shareText, copyText, shareBlob } from '
 import { sessionShareText } from './lib/session-share.js'
 import { SESSION_CONTEXT_FLAGS, sessionHandoffText } from './lib/ai-handoff.js'
 import { workoutPageHTML, pageFileName } from './lib/share-page.js'
-import { shareHtmlPage } from './lib/share-html.js'
+import { isShareCancellation, shareHtmlPage } from './lib/share-html.js'
 import { AiShareButtons } from './components/AiButtons.jsx'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
@@ -1680,10 +1680,6 @@ export const dayAddRoutineSheet = day => ui().openSheet(close => <DayAddRoutine 
 const exportFileName = value => String(value || 'openGym-workout')
   .replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'opengym-workout'
 
-function isShareCancellation(error) {
-  return error?.name === 'AbortError' || error?.code === 'CANCELED' || /cancel/i.test(error?.message || '')
-}
-
 // The same export controls are used from the finish confirmation and from a saved workout's
 // detail sheet. The latter matters because the confirmation is transient: once it is dismissed,
 // the user must still be able to share the exact saved session and its body map from History.
@@ -1694,8 +1690,14 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const saved = st.workouts.find(record => record.id === w.id)
-  const workout = { ...w, context: saved?.context }
-  const context = { flags: Array.isArray(workout.context?.flags) ? workout.context.flags : [], note: typeof workout.context?.note === 'string' ? workout.context.note : '' }
+  const storedNote = typeof saved?.context?.note === 'string' ? saved.context.note : ''
+  const [note, setNote] = useState(storedNote)
+  const noteRef = useRef(note)
+  const savedNoteRef = useRef(storedNote)
+  noteRef.current = note
+  savedNoteRef.current = storedNote
+  const context = { flags: Array.isArray(saved?.context?.flags) ? saved.context.flags : [], note }
+  const workout = { ...w, context }
   const text = sessionShareText(st, workout, prs, e1prs)
   const handoff = () => sessionHandoffText(st, workout, { prs, e1prs, context })
   const saveContext = next => update(s => {
@@ -1704,6 +1706,22 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
     if (next.flags.length || next.note.trim()) rec.context = next
     else delete rec.context
   })
+  const saveNote = () => {
+    if (noteRef.current === savedNoteRef.current) return
+    saveContext({ ...context, note: noteRef.current })
+    savedNoteRef.current = noteRef.current
+  }
+  useEffect(() => () => {
+    if (noteRef.current === savedNoteRef.current) return
+    update(s => {
+      const rec = s.workouts.find(record => record.id === w.id)
+      if (!rec) return
+      const flags = Array.isArray(rec.context?.flags) ? rec.context.flags : []
+      const note = noteRef.current
+      if (flags.length || note.trim()) rec.context = { flags, note }
+      else delete rec.context
+    })
+  }, [w.id])
   const load = loadOfWorkouts([w])
   const labels = rankOf(load).worked.map(slug => MUSCLE_NAME[slug] || slug)
   const nativeShare = MOBILE || (typeof navigator !== 'undefined' && typeof navigator.share === 'function')
@@ -1774,13 +1792,14 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
       <p>{t('Send this workout to your AI coach. It compares it with your history and tells you what to aim for next.')}</p>
       <div className="ai-context-label">{t('How did it go?')}</div>
       <div className="ai-context-chips" role="group" aria-label={t('How did it go?')}>
-        {SESSION_CONTEXT_FLAGS.map(({ id, label }) => <button type="button" key={id} aria-pressed={context.flags.includes(id)}
+        {SESSION_CONTEXT_FLAGS.map(({ id, label }) => <button type="button" key={id} disabled={!saved} aria-pressed={context.flags.includes(id)}
           className={'chip nocap' + (context.flags.includes(id) ? ' on' : '')}
-          onClick={() => saveContext({ ...context, flags: context.flags.includes(id) ? context.flags.filter(flag => flag !== id) : [...context.flags, id] })}>{t(label)}</button>)}
+          onClick={() => saveContext({ flags: context.flags.includes(id) ? context.flags.filter(flag => flag !== id) : [...context.flags, id], note: storedNote })}>{t(label)}</button>)}
       </div>
-      <input className="input ai-context-note" maxLength={300} value={context.note}
-        aria-label={t('Anything else? e.g. left early, elbow sore')} placeholder={t('Anything else? e.g. left early, elbow sore')}
-        onChange={e => saveContext({ ...context, note: e.target.value })} />
+      {!saved && <p className="ai-context-hint">{t('This workout is no longer saved. Context cannot be edited.')}</p>}
+      <input className="input ai-context-note" maxLength={300} value={note} disabled={!saved}
+        aria-label={t('Anything else?')} placeholder={t('Anything else?')}
+        onChange={e => { noteRef.current = e.target.value; setNote(e.target.value) }} onBlur={saveNote} />
       <AiShareButtons getText={handoff} />
     </section>
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>

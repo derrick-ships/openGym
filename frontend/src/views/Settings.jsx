@@ -466,6 +466,19 @@ function AiCoachCard({ S, update, toast }) {
   const feet = totalInches == null ? '' : Math.floor(totalInches / 12)
   const inches = totalInches == null ? '' : totalInches % 12
   const [heightDraft, setHeightDraft] = useState(null)
+  const [birthDraft, setBirthDraft] = useState(null)
+  const [cmDraft, setCmDraft] = useState(null)
+  const commitBirth = value => {
+    const year = Number(value)
+    set({ birthYear: /^\d{4}$/.test(value) && year >= 1900 && year <= new Date().getFullYear() ? year : null })
+    setBirthDraft(null)
+  }
+  const commitCm = value => {
+    const cm = Number(value)
+    set({ heightCm: value.trim() && Number.isFinite(cm) && cm >= 50 && cm <= 272 ? cm : null })
+    setCmDraft(null)
+  }
+  const enterCommits = commit => event => { if (event.key === 'Enter') { event.preventDefault(); commit(event.currentTarget.value); event.currentTarget.blur() } }
   const heightFt = heightDraft?.feet ?? feet
   const heightIn = heightDraft?.inches ?? inches
   const setHeight = (ft, inch) => {
@@ -478,7 +491,7 @@ function AiCoachCard({ S, update, toast }) {
     catch { toast(t('Could not copy. Please try again.')) }
   }
   const choices = (label, field, options) => <label className="ai-profile-field">
-    <span>{label}</span><select className="input" aria-label={label} value={athlete[field] || ''} onChange={e => set({ [field]: e.target.value || null })}>
+    <span>{label}</span><select className="input" aria-label={label} value={field === 'experience' && athlete[field] === 'New' ? 'New to lifting' : athlete[field] || ''} onChange={e => set({ [field]: e.target.value || null })}>
       <option value="">{t('Not specified')}</option>{options.map(option => <option key={option} value={option}>{t(option)}</option>)}
     </select>
   </label>
@@ -487,12 +500,12 @@ function AiCoachCard({ S, update, toast }) {
       <p className="ai-profile-intro">{t('Use ChatGPT, Claude or any AI as a coach that knows your numbers.')}</p>
       <div className="ai-profile-grid">
         {choices(t('Sex'), 'sex', ['Female', 'Male', 'Other', 'Prefer not to say'])}
-        <label className="ai-profile-field"><span>{t('Birth year')}</span><input className="input" type="number" inputMode="numeric" min="1900" max={new Date().getFullYear()} aria-label={t('Birth year')} value={athlete.birthYear ?? ''} onChange={e => set({ birthYear: e.target.value ? Number(e.target.value) : null })} /></label>
+        <label className="ai-profile-field"><span>{t('Birth year')}</span><input className="input" type="number" inputMode="numeric" min="1900" max={new Date().getFullYear()} aria-label={t('Birth year')} value={birthDraft ?? athlete.birthYear ?? ''} onChange={e => setBirthDraft(e.target.value)} onBlur={e => commitBirth(e.target.value)} onKeyDown={enterCommits(commitBirth)} /></label>
         {S.unit === 'lb' ? <div className="ai-profile-field"><span>{t('Height')}</span><div className="ai-height-fields">
           <label><input className="input" type="number" min="0" inputMode="numeric" aria-label={t('Height (ft)')} value={heightFt} onChange={e => setHeight(e.target.value, heightIn)} onBlur={() => setHeightDraft(null)} /><span>{t('ft')}</span></label>
           <label><input className="input" type="number" min="0" max="11" inputMode="numeric" aria-label={t('Height (in)')} value={heightIn} onChange={e => setHeight(heightFt, e.target.value)} onBlur={() => setHeightDraft(null)} /><span>{t('in')}</span></label>
-        </div></div> : <label className="ai-profile-field"><span>{t('Height (cm)')}</span><input className="input" type="number" min="0" inputMode="decimal" aria-label={t('Height (cm)')} value={athlete.heightCm ?? ''} onChange={e => set({ heightCm: e.target.value ? Number(e.target.value) : null })} /></label>}
-        {choices(t('Experience'), 'experience', ['New', 'Under 1 year', '1-3 years', '3+ years'])}
+        </div></div> : <label className="ai-profile-field"><span>{t('Height (cm)')}</span><input className="input" type="number" min="50" max="272" inputMode="decimal" aria-label={t('Height (cm)')} value={cmDraft ?? athlete.heightCm ?? ''} onChange={e => setCmDraft(e.target.value)} onBlur={e => commitCm(e.target.value)} onKeyDown={enterCommits(commitCm)} /></label>}
+        {choices(t('Experience'), 'experience', ['New to lifting', 'Under 1 year', '1-3 years', '3+ years'])}
         {choices(t('Goal'), 'goal', ['Strength', 'Muscle', 'Fat loss', 'General fitness', 'Sport performance'])}
       </div>
       <label className="ai-profile-field"><span>{t('Injuries')}</span><textarea className="input" rows={2} maxLength={1000} value={athlete.injuries} onChange={e => set({ injuries: e.target.value })} /></label>

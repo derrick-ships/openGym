@@ -21,7 +21,7 @@ import { MOBILE, shareBlob, copyText } from '../lib/mobile.js'
 import { routineShareText } from '../lib/plan-share.js'
 import { routineHandoffText } from '../lib/ai-handoff.js'
 import { routinePageHTML, pageFileName } from '../lib/share-page.js'
-import { shareHtmlPage } from '../lib/share-html.js'
+import { isShareCancellation, shareHtmlPage } from '../lib/share-html.js'
 import { AiShareButtons } from '../components/AiButtons.jsx'
 
 export const ROUTINE_LONG_PRESS_MS = 380
@@ -508,7 +508,7 @@ export default function RoutineEdit() {
       try {
         await shareHtmlPage(routinePageHTML(S, r, { accent: ACCENTS[S.accent] || ACCENTS.lime, aiText: routineHandoffText(S, r) }), pageFileName('routine', r.name))
       } catch (error) {
-        if (error?.name !== 'AbortError' && error?.code !== 'CANCELED') toast(t('Could not share the page.'))
+        if (!isShareCancellation(error)) toast(t('Could not share the page.'))
       }
     }}>{t('Share as page')}</Button>
     <div style={{ height: 8 }} />

@@ -1,7 +1,9 @@
 // Spanish UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "New to lifting": "Principiante",
+  "This workout is no longer saved. Context cannot be edited.": "Este entrenamiento ya no está guardado. No se puede editar el contexto.",
+  "Anything else?": "¿Algo más?",
   "AI coach": "Entrenador de IA",
-  "Anything else? e.g. left early, elbow sore": "¿Algo más? Por ejemplo, salí temprano o me duele el codo",
   "Birth year": "Año de nacimiento",
   "Body-weight log and athlete profile": "Registro de peso corporal y perfil del deportista",
   "Claude": "Claude",

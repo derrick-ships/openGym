@@ -1,5 +1,14 @@
 // Spanish UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  'Full-screen timer for timed sets': 'Temporizador a pantalla completa para series cronometradas',
+  'Big numbers you can read from across the room.': 'Números grandes que puedes leer desde el otro lado de la habitación.',
+  'Expand timer': 'Ampliar temporizador',
+  'Minimize timer': 'Minimizar temporizador',
+  'Timed set': 'Serie cronometrada',
+  'Time remaining': 'Tiempo restante',
+  'Stop': 'Detener',
+  '10 seconds remaining': 'Quedan 10 segundos',
+  '3 seconds remaining': 'Quedan 3 segundos',
   'Stretching': 'Estiramientos',
   'New stretching': 'Nuevo de estiramientos',
   'New stretching routine': 'Nueva rutina de estiramientos',

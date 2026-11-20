@@ -1,5 +1,14 @@
 // Russian UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  'Full-screen timer for timed sets': 'Full-screen timer for timed sets',
+  'Big numbers you can read from across the room.': 'Big numbers you can read from across the room.',
+  'Expand timer': 'Expand timer',
+  'Minimize timer': 'Minimize timer',
+  'Timed set': 'Timed set',
+  'Time remaining': 'Time remaining',
+  'Stop': 'Stop',
+  '10 seconds remaining': '10 seconds remaining',
+  '3 seconds remaining': '3 seconds remaining',
   'Confirm': 'Подтвердить',
   'Cancel': 'Отмена',
   'Press back again to exit': 'Нажмите «Назад» ещё раз, чтобы выйти',

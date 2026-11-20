@@ -4,14 +4,15 @@ import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { Button } from './ui.jsx'
 import BreathingGuide from './BreathingGuide.jsx'
+import Icon from './Icon.jsx'
 
-const clock = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
+export const clock = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
 
 // One bar, two meanings: the rest countdown between sets, and the work countdown during a
 // timed set (issue #16). They are mutually exclusive by construction — startWork() stops any
 // running rest — so the bar can never have to show both, and a work set gets its own colour
 // plus a "Done" that logs the time actually held.
-export default function RestTimer() {
+export default function RestTimer({ onExpand }) {
   const timer = useUI(s => s.timer)
   const work = useUI(s => s.work)
   const settings = useStore(s => s.S)
@@ -56,6 +57,7 @@ export default function RestTimer() {
         {work.label && <div className="lbl">{work.label}</div>}
         <div className="bar"><i style={{ width: pct + '%' }} /></div>
       </div>
+      <button type="button" className="work-expand" aria-label={t('Expand timer')} onClick={onExpand}><Icon name="expand" /></button>
       <Button size="sm" onClick={stopWork}>{t('Cancel')}</Button>
       <Button size="sm" variant="primary" icon="check" onClick={finishWorkEarly}>{t('Done')}</Button>
     </div>

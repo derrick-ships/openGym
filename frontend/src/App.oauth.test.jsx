@@ -35,6 +35,7 @@ vi.mock('./components/ErrorBoundary.jsx', () => ({ default: ({ children }) => <>
 vi.mock('./components/Modals.jsx', () => ({ default: () => null }))
 vi.mock('./components/Toast.jsx', () => ({ default: () => null }))
 vi.mock('./components/RestTimer.jsx', () => ({ default: () => null }))
+vi.mock('./components/FocusTimer.jsx', () => ({ default: () => null }))
 vi.mock('./components/TimerFlash.jsx', () => ({ default: () => null }))
 vi.mock('./views/Login.jsx', () => ({ default: () => <div data-testid="login" /> }))
 vi.mock('./views/MobileOnboarding.jsx', () => ({ default: () => null }))

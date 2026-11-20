@@ -20,7 +20,7 @@ import { startCadence } from './coach/cadence.js';
 import { startWarmup } from './coach/warmup.js';
 import { dayReminderPush, restTimerPush, testPush } from './push-messages.js';
 import { verifyError } from './verify-error.js';
-import { isShareId, newShareId, shareTitle, validateSnapshot } from './shares.js';
+import { isShareId, isShareTimestamp, newShareId, shareTitle, validateSnapshot } from './shares.js';
 import {
   StorageCorruptError, durableAtomicWrite, etagFor, normalizeIfMatch, readJson,
   isSafeId
@@ -1939,36 +1939,71 @@ const MAX_SHARES_PER_USER = 200;
 const MAX_CREATES_PER_HOUR = 30;
 const HOUR_MS = 60 * 60 * 1000;
 const shareCreates = new Map();
-const shareFile = id => path.join(SHARES_DIR, `${id}.json`);
+const shareOwners = new Map(db.users.filter(user => user?.id).map(user => [user.id, user]));
+const shareIndexFile = path.join(SHARES_DIR, 'index.json');
+let shareIndex;
+const shareDir = uid => path.join(SHARES_DIR, uid);
+const shareFile = (uid, id) => path.join(shareDir(uid), `${id}.json`);
+const isShareUid = uid => typeof uid === 'string' && isSafeId(uid);
+
+function readShareIndex() {
+  if (shareIndex) return shareIndex;
+  const stored = readJson(shareIndexFile, { missing: {} });
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+    throw new StorageCorruptError(shareIndexFile, new Error('share index is not an object'));
+  }
+  const entries = Object.entries(stored);
+  if (!entries.every(([id, uid]) => isShareId(id) && isShareUid(uid))) {
+    throw new StorageCorruptError(shareIndexFile, new Error('invalid share index entry'));
+  }
+  shareIndex = new Map(entries);
+  return shareIndex;
+}
+
+// Warm the index once at startup. A temporarily unavailable disk can recover on demand.
+try { readShareIndex(); } catch (error) { console.error('share index unavailable:', error.message); }
+
+function writeShareIndex(index) {
+  durableAtomicWrite(shareIndexFile, JSON.stringify(Object.fromEntries(index)), 0o600);
+  shareIndex = index;
+}
 
 setInterval(() => {
   const cutoff = Date.now() - HOUR_MS;
   for (const [uid, times] of shareCreates) if (times.at(-1) <= cutoff) shareCreates.delete(uid);
 }, HOUR_MS).unref();
 
-function readShare(id) {
-  const file = shareFile(id);
+function readShare(uid, id) {
+  const file = shareFile(uid, id);
   const record = readJson(file, { missing: undefined });
   if (record === undefined) return null;
-  if (record?.id !== id || typeof record.uid !== 'string' || typeof record.createdAt !== 'string' ||
-      !Number.isFinite(Date.parse(record.createdAt)) || typeof record.snapshot?.title !== 'string' ||
-      !['routine', 'workout'].includes(record.kind)) {
+  // On case-insensitive filesystems, an opened path may belong to a differently cased ID.
+  if (typeof record?.id === 'string' && record.id !== id) return null;
+  const time = typeof record?.createdAt === 'string' ? Date.parse(record.createdAt) : NaN;
+  if (record?.id !== id || record.uid !== uid || !isShareTimestamp(time) ||
+      new Date(time).toISOString() !== record.createdAt) {
     throw new StorageCorruptError(file, new Error('share record has an invalid shape'));
   }
-  return record;
+  const validated = validateSnapshot(record.kind, record.snapshot);
+  if (!validated.ok) throw new StorageCorruptError(file, new Error(validated.error));
+  return { id, uid, kind: record.kind, createdAt: record.createdAt, snapshot: validated.snapshot };
 }
 
 function sharesFor(uid) {
+  if (!isShareUid(uid)) throw new Error('invalid share owner');
   let names;
-  try { names = fs.readdirSync(SHARES_DIR); }
+  try { names = fs.readdirSync(shareDir(uid)); }
   catch (error) { if (error.code === 'ENOENT') return []; throw error; }
   const records = [];
   for (const name of names) {
     if (!name.endsWith('.json')) continue;
     const id = name.slice(0, -5);
     if (!isShareId(id)) continue;
-    const record = readShare(id);
-    if (record?.uid === uid) records.push(record);
+    try {
+      const record = readShare(uid, id);
+      if (record) records.push(record);
+      else console.warn('skipping missing or mismatched share:', id);
+    } catch (error) { console.warn('skipping unreadable share:', error.message); }
   }
   return records;
 }
@@ -1976,14 +2011,36 @@ function sharesFor(uid) {
 function serveShare(res, id) {
   if (!isShareId(id)) return json(res, 400, { error: 'invalid share id' });
   try {
-    const record = readShare(id);
+    const uid = readShareIndex().get(id);
+    const owner = shareOwners.get(uid);
+    const record = owner && !owner.disabled ? readShare(uid, id) : null;
     if (!record) return json(res, 404, { error: 'not_found' });
-    const { kind, createdAt } = record;
-    const validated = validateSnapshot(kind, record.snapshot);
-    if (!validated.ok) throw new StorageCorruptError(shareFile(id), new Error(validated.error));
-    json(res, 200, { id, kind, createdAt, snapshot: validated.snapshot }, {
-      'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex'
+    const { kind, createdAt, snapshot } = record;
+    json(res, 200, { id, kind, createdAt, snapshot }, {
+      'Cache-Control': 'public, max-age=60', 'X-Robots-Tag': 'noindex'
     });
+  } catch (error) { storageFailure(res, error); }
+}
+
+async function revokeShare(req, res, user, admin = false) {
+  const body = await readShareBody(req, res);
+  if (body === undefined) return;
+  const id = body?.id;
+  if (!isShareId(id)) return json(res, 400, { error: 'invalid share id' });
+  try {
+    const index = readShareIndex();
+    const uid = index.get(id);
+    if (!uid || (!admin && uid !== user.id) || !readShare(uid, id)) {
+      return json(res, 404, { error: 'not_found' });
+    }
+    // Delete the snapshot first so an interrupted revoke cannot leave a public copy.
+    durableUnlink(shareFile(uid, id));
+    const next = new Map(index);
+    next.delete(id);
+    writeShareIndex(next);
+    if (admin) audit(req, 'admin.share.revoke', { user, target: shareOwners.get(uid) || { id: uid } });
+    else audit(req, 'share.revoke', { uid });
+    json(res, 200, { ok: true });
   } catch (error) { storageFailure(res, error); }
 }
 
@@ -2344,6 +2401,7 @@ const routes = {
     const user = { id: c.uid, name: c.name, created: new Date().toISOString() };
     if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
     db.users.push(user);
+    shareOwners.set(user.id, user);
     db.creds.push({
       id: credential.id, userId: user.id,
       publicKey: Buffer.from(credential.publicKey).toString('base64url'),
@@ -2563,6 +2621,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readShareBody(req, res);
     if (body === undefined) return;
+    if (user.disabled) return json(res, 401, { error: 'not signed in' });
     const kind = body?.kind;
     const validated = validateSnapshot(kind, body?.snapshot);
     if (!validated.ok) return json(res, 400, { error: validated.error });
@@ -2572,13 +2631,18 @@ const routes = {
     if (recent.length >= MAX_CREATES_PER_HOUR) return json(res, 429, { error: 'rate_limited' });
     try {
       // No await between the quota check and write: concurrent creates cannot both take the last slot.
-      if (sharesFor(user.id).length >= MAX_SHARES_PER_USER) return json(res, 409, { error: 'share_limit' });
-      fs.mkdirSync(SHARES_DIR, { recursive: true, mode: 0o700 });
+      const uid = user.id;
+      if (sharesFor(uid).length >= MAX_SHARES_PER_USER) return json(res, 409, { error: 'share_limit' });
+      const index = readShareIndex();
+      fs.mkdirSync(shareDir(uid), { recursive: true, mode: 0o700 });
       let id;
-      do { id = newShareId(); } while (fs.existsSync(shareFile(id)));
+      do { id = newShareId(); } while (index.has(id) || fs.existsSync(shareFile(uid, id)));
       const createdAt = new Date(now).toISOString();
-      durableAtomicWrite(shareFile(id), JSON.stringify({ id, uid: user.id, kind, createdAt, snapshot: validated.snapshot }), 0o600);
-      shareCreates.set(user.id, [...recent, now]);
+      const next = new Map(index).set(id, uid);
+      // Commit the lookup first; an interrupted publish can only leave a lookup that returns 404.
+      writeShareIndex(next);
+      durableAtomicWrite(shareFile(uid, id), JSON.stringify({ id, uid, kind, createdAt, snapshot: validated.snapshot }), 0o600);
+      shareCreates.set(uid, [...recent, now]);
       audit(req, 'share.create', { uid: user.id });
       json(res, 201, { id, url: `/s/${id}`, createdAt });
     } catch (error) { storageFailure(res, error); }
@@ -2599,16 +2663,7 @@ const routes = {
     if (!requireWritable(res)) return;
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    const body = await readShareBody(req, res);
-    if (body === undefined) return;
-    const id = body?.id;
-    if (!isShareId(id)) return json(res, 400, { error: 'invalid share id' });
-    try {
-      if (readShare(id)?.uid !== user.id) return json(res, 404, { error: 'not_found' });
-      durableUnlink(shareFile(id));
-      audit(req, 'share.revoke', { uid: user.id });
-      json(res, 200, { ok: true });
-    } catch (error) { storageFailure(res, error); }
+    return revokeShare(req, res, user);
   },
 
   'POST /api/assets': async (req, res) => {
@@ -2936,6 +2991,13 @@ const routes = {
     saveDb();
     audit(req, u.disabled ? 'admin.user.disable' : 'admin.user.enable', { user: admin, target: u });
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
+  },
+
+  'POST /api/admin/shares/revoke': async (req, res) => {
+    if (!requireWritable(res)) return;
+    const admin = requireAdmin(req, res);
+    if (!admin) return;
+    return revokeShare(req, res, admin, true);
   },
 
   'GET /api/admin/invites': async (req, res) => {

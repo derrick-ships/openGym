@@ -34,10 +34,12 @@ function isObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
+const INVISIBLE = /[\u200B-\u200F\u2028-\u202E\u2066-\u2069\uFEFF]/;
+
 function text(max, multiline = false) {
   const controls = multiline ? /[\x00-\x09\x0b-\x1f\x7f-\x9f]/ : /[\x00-\x1f\x7f-\x9f]/;
   return (value, field) => {
-    if (typeof value !== 'string' || controls.test(value)) invalid(field);
+    if (typeof value !== 'string' || controls.test(value) || INVISIBLE.test(value)) invalid(field);
     const trimmed = value.trim();
     if (trimmed.length > max) invalid(field);
     return trimmed;
@@ -62,8 +64,25 @@ function matching(max, pattern) {
   };
 }
 
-function number(value, field) {
-  if (!Number.isFinite(value) || value < 0) invalid(field);
+const MAX_TIMESTAMP_MS = 8.64e15;
+
+function number(max, integer = false) {
+  return (value, field) => {
+    if (!Number.isFinite(value) || value < 0 || value > max || (integer && !Number.isInteger(value))) invalid(field);
+    return value;
+  };
+}
+
+const duration = number(7 * 24 * 60 * 60 * 1000, true);
+const count = number(10000, true);
+const intensity = number(1000);
+
+export function isShareTimestamp(value) {
+  return Number.isInteger(value) && value >= 0 && value <= MAX_TIMESTAMP_MS;
+}
+
+function timestamp(value, field) {
+  if (!isShareTimestamp(value)) invalid(field);
   return value;
 }
 
@@ -99,9 +118,9 @@ function load(value, field) {
   if (!isObject(value)) invalid(field);
   const entries = Object.entries(value);
   if (entries.length > 40) invalid(field);
-  return Object.fromEntries(entries.map(([slug, intensity]) => {
+  return Object.fromEntries(entries.map(([slug, value]) => {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) invalid(`${field} slug`);
-    return [slug, number(intensity, field)];
+    return [slug, intensity(value, field)];
   }));
 }
 
@@ -116,16 +135,16 @@ function workoutDate(value, field) {
 const set = object({ label: text(80) }, { warmup: boolean, pr: boolean });
 const entry = object({ id: text(120), name: text(120), muscles: array(12, text(40)), sets: array(40, set) }, {
   img: matching(125, /^[\w.-]{1,120}\.(jpg|jpeg|png|webp)$/), gif: matching(124, /^[\w.-]{1,120}\.gif$/),
-  scheme: text(80), restSec: number, superset: text(8), note: text(300, true)
+  scheme: text(80), restSec: number(3600, true), superset: text(8), note: text(300, true)
 });
-const stats = object({ volume: number, sets: number, workSets: number, prs: number, durationMs: number });
+const stats = object({ volume: number(1e7), sets: count, workSets: count, prs: count, durationMs: duration });
 const pr = object({ name: text(120), detail: text(80) });
 const snapshotV1 = object({
   v: (value, field) => value === 1 ? 1 : invalid(field), kind: oneOf(...KINDS), title: text(120), date: workoutDate,
   unit: oneOf('kg', 'lb'), accent: matching(7, /^#[0-9a-f]{6}$/i), body: oneOf('male', 'female'), load,
   entries: array(60, entry)
 }, {
-  subtitle: text(160), startedAt: number, durationMs: number, owner: text(60), stats, prs: array(30, pr),
+  subtitle: text(160), startedAt: timestamp, durationMs: duration, owner: text(60), stats, prs: array(30, pr),
   note: text(500, true), days: array(7, text(20)), aiText: text(6000, true)
 });
 

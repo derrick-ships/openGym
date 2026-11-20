@@ -714,7 +714,7 @@ paths:
           description: The saved snapshot. Never includes the owner's user ID.
           headers:
             Cache-Control:
-              schema: { type: string, const: 'public, max-age=300' }
+              schema: { type: string, const: 'public, max-age=60' }
             X-Robots-Tag:
               schema: { type: string, const: noindex }
           content:
@@ -730,7 +730,7 @@ paths:
                   snapshot: { $ref: '#/components/schemas/ShareSnapshot' }
         '400': { description: Malformed share ID. }
         '404':
-          description: Share is missing or revoked.
+          description: Share is missing, revoked, or belongs to a disabled account.
           content:
             application/json:
               example: { error: not_found }
@@ -741,7 +741,7 @@ paths:
       tags: [shares]
       operationId: revokeShare
       summary: Delete a share owned by the signed-in user
-      description: Requires a session and the usual CSRF checks. Previously cached copies may remain for up to five minutes.
+      description: Requires a session and the usual CSRF checks. Revocation can take up to one minute to propagate to caches.
       requestBody:
         required: true
         content:
@@ -1080,7 +1080,8 @@ paths:
       description: |
         Sets the `disabled` flag. A disabled account is locked out everywhere at once
         (every existing session stops resolving) and dropped from live presence.
-        Admins cannot be disabled. Audited.
+        Public shares are hidden until the account is re-enabled; cached copies may
+        remain accessible for up to one minute. Admins cannot be disabled. Audited.
       requestBody:
         required: true
         content:
@@ -1116,6 +1117,38 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: "no such user" }
+
+  /api/admin/shares/revoke:
+    post:
+      tags: [admin, shares]
+      operationId: adminRevokeShare
+      summary: 'Admin: permanently revoke any share'
+      description: Requires an admin session and CSRF checks. Audited. Revocation can take up to one minute to propagate to caches.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { $ref: '#/components/schemas/ShareId' }
+      responses:
+        '200':
+          description: Share deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { description: Malformed JSON or share ID. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Admin access required or cross-origin request refused. }
+        '404':
+          description: Unknown share.
+          content:
+            application/json:
+              example: { error: not_found }
+        '413': { description: Request body exceeds 256 KiB. }
+        '503': { description: Persistent storage unavailable. }
 
   /api/admin/invites:
     get:
@@ -1357,7 +1390,8 @@ components:
       required: [v, kind, title, date, unit, accent, body, load, entries]
       description: >-
         Immutable share snapshot, version 1. String bounds apply after trimming.
-        Control characters are rejected, except line feeds in note and aiText fields.
+        Control characters, zero-width and bidi controls, U+2028/U+2029 line separators,
+        and U+FEFF are rejected; line feeds are allowed only in note and aiText fields.
         Do not include private data or custom image paths. Owner display name is opt-in.
       properties:
         v: { type: integer, const: 1 }
@@ -1365,8 +1399,8 @@ components:
         title: { type: string, maxLength: 120 }
         subtitle: { type: string, maxLength: 160 }
         date: { type: string, format: date, pattern: '^\d{4}-\d{2}-\d{2}$' }
-        startedAt: { type: number, minimum: 0, description: Unix timestamp in milliseconds. }
-        durationMs: { type: number, minimum: 0 }
+        startedAt: { type: integer, minimum: 0, maximum: 8640000000000000, description: Unix timestamp in milliseconds. }
+        durationMs: { type: integer, minimum: 0, maximum: 604800000 }
         unit: { type: string, enum: [kg, lb] }
         accent: { type: string, pattern: '^#[0-9A-Fa-f]{6}$' }
         body: { type: string, enum: [male, female] }
@@ -1376,16 +1410,16 @@ components:
           additionalProperties: false
           required: [volume, sets, workSets, prs, durationMs]
           properties:
-            volume: { type: number, minimum: 0 }
-            sets: { type: number, minimum: 0 }
-            workSets: { type: number, minimum: 0 }
-            prs: { type: number, minimum: 0 }
-            durationMs: { type: number, minimum: 0 }
+            volume: { type: number, minimum: 0, maximum: 10000000 }
+            sets: { type: integer, minimum: 0, maximum: 10000 }
+            workSets: { type: integer, minimum: 0, maximum: 10000 }
+            prs: { type: integer, minimum: 0, maximum: 10000 }
+            durationMs: { type: integer, minimum: 0, maximum: 604800000 }
         load:
           type: object
           maxProperties: 40
           propertyNames: { pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
-          additionalProperties: { type: number, minimum: 0 }
+          additionalProperties: { type: number, minimum: 0, maximum: 1000 }
           description: Body-map intensities by muscle slug.
         entries:
           type: array
@@ -1422,7 +1456,7 @@ components:
           maxItems: 12
           items: { type: string, maxLength: 40 }
         scheme: { type: string, maxLength: 80 }
-        restSec: { type: number, minimum: 0 }
+        restSec: { type: integer, minimum: 0, maximum: 3600 }
         superset: { type: string, maxLength: 8 }
         note: { type: string, maxLength: 300 }
         sets:

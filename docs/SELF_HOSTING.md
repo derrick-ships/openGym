@@ -168,10 +168,12 @@ Access…) in front still works, and composes with the above.
 
 ### Shared pages
 
-Published workout and routine snapshots are stored in `data/shares/` and are public to anyone
-with the link, no sign-in needed. Revoke an individual link under **Settings → Shared pages**,
-or delete `data/shares/` on the server to revoke all links. Copies already cached may still be
-available for up to five minutes.
+Published workout and routine snapshots are stored in per-user folders under `data/shares/`
+and are public to anyone with the link. Revoke a link under **Settings → Shared pages**, or stop
+openGym and delete `data/shares/` to revoke all links. Disabling an account hides its links until
+it is re-enabled; an admin can permanently revoke an individual link using
+`POST /api/admin/shares/revoke` with `{ "id": "<share-id>" }`. Revocation and account disabling
+can take up to one minute to propagate to caches.
 
 ## 5. Fitting it into an existing stack
 

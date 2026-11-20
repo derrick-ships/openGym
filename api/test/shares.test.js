@@ -107,6 +107,32 @@ test('rejects invalid values, unknown properties and nested garbage', () => {
   assert.equal(validateSnapshot('other', snapshot('other')).ok, false);
 });
 
+test('accepts each numeric cap and rejects excessive numbers and fractional integers', () => {
+  const limits = [
+    ['startedAt', 8.64e15, true, value => extras('startedAt', value)],
+    ['durationMs', 604800000, true, value => extras('durationMs', value)],
+    ['restSec', 3600, true, value => withEntry('restSec', value)],
+    ['load', 1000, false, value => extras('load', { chest: value })],
+    ...Object.entries({ volume: 1e7, sets: 10000, workSets: 10000, prs: 10000, durationMs: 604800000 })
+      .map(([key, max]) => [`stats.${key}`, max, key !== 'volume', value => extras('stats', { ...stats, [key]: value })])
+  ];
+  for (const [label, max, integer, make] of limits) {
+    assert.equal(validateSnapshot('workout', make(max)).ok, true, `${label} maximum`);
+    assert.equal(validateSnapshot('workout', make(max + 1)).ok, false, `${label} exceeds maximum`);
+    assert.equal(validateSnapshot('workout', make(0.5)).ok, !integer, `${label} fractional`);
+    assert.equal(validateSnapshot('workout', make(-1)).ok, false, `${label} negative`);
+  }
+});
+
+test('rejects invisible, bidi, and line-separator controls before trimming any text', () => {
+  for (const codepoint of [0x200b, 0x200f, 0x2028, 0x2029, 0x202e, 0x2066, 0x2069, 0xfeff]) {
+    const text = `hello${String.fromCodePoint(codepoint)}`;
+    for (const value of [extras('title', text), extras('note', text), extras('aiText', text), withEntry('note', text)]) {
+      assert.equal(validateSnapshot('workout', value).ok, false, codepoint.toString(16));
+    }
+  }
+});
+
 test('share IDs are 12 base62 characters', () => {
   const ids = Array.from({ length: 500 }, newShareId);
   assert.equal(new Set(ids).size, ids.length);

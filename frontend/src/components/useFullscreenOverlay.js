@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import { useUI } from '../store/useUI.js'
 
 // Shared by mutually exclusive work and rest overlays; sheets remain interactive above both.
 export function useFullscreenOverlay(open, overlayRef, initialFocusRef, minimize) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !overlayRef.current) return
     const overlay = overlayRef.current
     const previous = document.activeElement
@@ -12,7 +12,7 @@ export function useFullscreenOverlay(open, overlayRef, initialFocusRef, minimize
     page.style.setProperty('--focus-scroll-offset', `${-scrollY}px`)
     page.classList.add('focus-timer-open')
     useUI.setState({ focusOpen: true, minimizeFocus: minimize })
-    const siblings = [...overlay.parentElement.children].filter(element => element !== overlay && element.id !== 'modal-root' && element.id !== 'toast')
+    const siblings = [...overlay.parentElement.children].filter(element => element !== overlay && element.id !== 'modal-root' && element.id !== 'toast' && !element.matches('.focus-timer, .breathing-focus'))
     const wasInert = siblings.map(element => element.inert)
     siblings.forEach(element => { element.inert = true })
     initialFocusRef.current?.focus()

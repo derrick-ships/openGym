@@ -38,6 +38,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
     const thisEffect = ++effectEpoch.current
     active.current = true
     let tickId = null
+    let boundaryId = null
     const update = allowHaptic => {
       if (isHidden()) {
         setVisible(false)
@@ -74,16 +75,26 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
       previousPhase.current = next
       setSeconds(phaseSeconds(next))
       setClassicAvailable(remaining >= 80_000)
+      clearTimeout(boundaryId)
+      // The polling tick is only a fallback; arm the exact wall-clock transition separately.
+      if (!next.completed) {
+        const untilBoundary = next.durationMs - next.phaseElapsedMs
+        const untilFinalCue = remaining - 5000
+        boundaryId = setTimeout(() => update(true), Math.max(1, Math.min(untilBoundary, untilFinalCue)))
+      } else if (remaining > 5000) {
+        boundaryId = setTimeout(() => update(true), Math.max(1, remaining - 5000))
+      }
     }
     const startTicks = allowHaptic => {
       clearInterval(tickId)
       update(allowHaptic)
-      tickId = setInterval(() => update(true), 250)
+      tickId = setInterval(() => update(true), 100)
     }
     const onVisibility = () => {
       if (isHidden()) {
         setVisible(false)
         clearInterval(tickId)
+        clearTimeout(boundaryId)
         tickId = null
       } else {
         setSyncEpoch(epoch => epoch + 1)
@@ -96,6 +107,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
     return () => {
       active.current = false
       clearInterval(tickId)
+      clearTimeout(boundaryId)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [exercise.id, sequence, hapticsEnabled, timer.endsAt, onComplete])
@@ -153,7 +165,7 @@ export default function BreathingGuide({ exerciseId, startedAt, timer, hapticsEn
               className="breathing-mode"
               aria-pressed={sequence.variantId === variant.id}
               onClick={() => chooseVariant(variant.id)}
-            >{t(variant.label)}</Button>
+            >{variant.numericLabel ? variant.label : t(variant.label)}</Button>
           ))}
         </div>
       )}

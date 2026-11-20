@@ -11,6 +11,19 @@ describe('breathing pattern catalog', () => {
   })
 })
 
+describe('tempo variants', () => {
+  it.each([['3-3-3-3', 3000], ['4-4-4-4', 4000], ['5-5-5-5', 5000]])('box %s changes every phase duration', (variant, duration) => {
+    expect(phaseAt('box', 0, Infinity, variant)).toMatchObject({ id: 'inhale', durationMs: duration })
+    expect(phaseAt('box', duration, Infinity, variant)).toMatchObject({ id: 'hold', durationMs: duration })
+    expect(phaseAt('box', duration * 2, Infinity, variant)).toMatchObject({ id: 'exhale', durationMs: duration })
+    expect(phaseAt('box', duration * 3, Infinity, variant)).toMatchObject({ id: 'hold-empty', durationMs: duration })
+  })
+  it.each([['5.5-5.5', 5500], ['6-6', 6000]])('resonance %s uses equal phases', (variant, duration) => {
+    expect(phaseAt('resonance-6', 0, Infinity, variant)).toMatchObject({ id: 'inhale', durationMs: duration })
+    expect(phaseAt('resonance-6', duration, Infinity, variant)).toMatchObject({ id: 'exhale', durationMs: duration })
+  })
+})
+
 describe('new breathing patterns', () => {
   it.each([
     ['box', [['inhale', 4000], ['hold', 4000], ['exhale', 4000], ['hold-empty', 4000]], 4],

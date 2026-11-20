@@ -65,6 +65,12 @@ describe('focus timer', () => {
     act(() => useUI.setState({ timer: null, work: hold() }))
     expect(host.querySelectorAll('.breathing-focus')).toHaveLength(0)
     expect(host.querySelectorAll('.focus-timer')).toHaveLength(1)
+    expect(document.documentElement.classList.contains('focus-timer-open')).toBe(true)
+    expect(host.querySelector('#timer.working').inert).toBe(true)
+    expect(useUI.getState().focusOpen).toBe(true)
+    expect(useUI.getState().minimizeFocus).toEqual(expect.any(Function))
+    act(() => useUI.getState().minimizeFocus())
+    expect(host.querySelector('.focus-timer')).toBeNull()
   })
 
   it('renders nothing without a work timer', () => {

@@ -60,6 +60,7 @@ const button = (name, base = host) => [...base.querySelectorAll('button')].find(
 
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })))
   Object.defineProperty(document, 'hidden', { value: false, configurable: true })
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -78,6 +79,8 @@ afterEach(() => {
   useStore.setState({ S: savedSettings })
   Object.defineProperty(document, 'hidden', { value: false, configurable: true })
   document.body.classList.remove('resting')
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -135,7 +138,31 @@ describe('breathing guide in the rest timer', () => {
     render()
     await click(button('Breathe'))
     expect(host.querySelector('.breathing-focus.reduced-motion')).toBeTruthy()
+    const request = vi.spyOn(window, 'requestAnimationFrame')
+    await act(async () => { vi.advanceTimersByTime(1500); await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+    request.mockRestore()
     vi.unstubAllGlobals()
+  })
+
+  it('eases the orb to stillness when the last-five-seconds cue interrupts a full inhale', async () => {
+    vi.stubGlobal('requestAnimationFrame', callback => setTimeout(() => callback(Date.now()), 16))
+    vi.stubGlobal('cancelAnimationFrame', clearTimeout)
+    act(() => useUI.setState({ timer: rest(15) }))
+    render()
+    await click(button('Breathe'))
+    const art = host.querySelector('.breathing-focus-art')
+    await act(async () => { vi.advanceTimersByTime(4900); await Promise.resolve() })
+    const current = useUI.getState().timer
+    act(() => useUI.setState({ timer: { ...current, total: 10, endsAt: current.endsAt - 5000 } }))
+    const before = Number(art.style.getPropertyValue('--breath-p'))
+    expect(before).toBeGreaterThan(.7)
+    await act(async () => { vi.advanceTimersByTime(150); await Promise.resolve() })
+    const during = Number(art.style.getPropertyValue('--breath-p'))
+    expect(during).toBeGreaterThan(.3)
+    expect(during).toBeLessThan(before)
+    await act(async () => { vi.advanceTimersByTime(800); await Promise.resolve() })
+    expect(Number(art.style.getPropertyValue('--breath-p'))).toBeLessThan(.03)
   })
 
   it('does not start an unfinishable round when the first boundary sample is late', async () => {
@@ -275,6 +302,19 @@ describe('breathing guide in the rest timer', () => {
     act(() => document.dispatchEvent(new Event('visibilitychange')))
     expect(host.querySelector('.breathing-phase').textContent).toContain('Exhale')
     expect(mocks.phaseBoundaryHaptic).not.toHaveBeenCalled()
+  })
+
+  it('fires release at the wall-clock phase boundary even when the guide starts off-tick', async () => {
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+    await act(async () => { vi.advanceTimersByTime(137) })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { vi.advanceTimersByTime(4833); await Promise.resolve() })
+    expect(mocks.phaseBoundaryHaptic).not.toHaveBeenCalled()
+    await act(async () => { vi.advanceTimersByTime(60); await Promise.resolve() })
+    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledTimes(1)
+    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledWith(true, expect.any(Function), 'release')
   })
 
   it('plays one haptic for a visible phase boundary, but none on initial mount', async () => {

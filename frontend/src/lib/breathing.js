@@ -5,7 +5,7 @@ const phase = (id, label, durationMs, motion, cue, side) => ({
 const inhale = (durationMs, cue = 'Through your nose') => phase('inhale', 'Inhale', durationMs, 'inhale', cue)
 const exhale = (durationMs, cue = 'Through your mouth') => phase('exhale', 'Exhale', durationMs, 'exhale', cue)
 const hold = (id, durationMs, cue) => phase(id, 'Hold', durationMs, 'hold', cue)
-const boxPhases = () => [inhale(4000), hold('hold', 4000, 'Hold comfortably'), exhale(4000, 'Through your nose'), hold('hold-empty', 4000, 'Pause comfortably')]
+const boxPhases = (ms = 4000) => [inhale(ms), hold('hold', ms, 'Hold comfortably'), exhale(ms, 'Through your nose'), hold('hold-empty', ms, 'Pause comfortably')]
 const exercise = (id, label, rounds, phases, extra = {}) => ({
   id, label, rounds, defaultVariant: 'default', ...extra,
   variants: [{ id: 'default', label, rounds, phases }],
@@ -62,9 +62,15 @@ export const BREATHING_EXERCISES = [
       },
     ],
   },
-  exercise('box', 'Box breathing', 4, boxPhases()),
+  {
+    id: 'box', label: 'Box breathing', rounds: 4, defaultVariant: '4-4-4-4',
+    variants: [3, 4, 5].map(n => ({ id: `${n}-${n}-${n}-${n}`, label: `${n}-${n}-${n}-${n}`, numericLabel: true, rounds: 4, phases: boxPhases(n * 1000) })),
+  },
   exercise('recovery-sprint', 'Recovery sprint', 6, [inhale(3000), hold('hold', 1000, 'Hold comfortably'), exhale(5000, 'Slow and easy')]),
-  exercise('resonance-6', 'Resonance breathing', 5, [inhale(6000), exhale(6000, 'Through your nose or mouth')]),
+  {
+    id: 'resonance-6', label: 'Resonance breathing', rounds: 5, defaultVariant: '6-6',
+    variants: [5.5, 6].map(n => ({ id: `${n}-${n}`, label: `${n} / ${n}`, numericLabel: true, rounds: 5, phases: [inhale(n * 1000), exhale(n * 1000, 'Through your nose or mouth')] })),
+  },
   exercise('triangle', 'Triangle breathing', 6, [inhale(4000), hold('hold', 4000, 'Hold comfortably'), exhale(4000, 'Slow and easy')]),
   exercise('power-breath', 'Power breath', 8, [inhale(2000), exhale(2000)], { energising: true }),
 ]

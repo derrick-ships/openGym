@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "Instrucciones del entrenador copiadas",
   "Connected health sources": "Fuentes de salud conectadas",
   "Copied. Paste it in {0}.": "Copiado. Pégalo en {0}.",
+  "Copied. Paste it in {0} after it opens.": "Copiado. Pégalo en {0} cuando se abra.",
   "Copy coach instructions": "Copiar instrucciones del entrenador",
   "Could not copy. Please try again.": "No se pudo copiar. Inténtalo de nuevo.",
   "Could not share the page.": "No se pudo compartir la página.",

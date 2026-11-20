@@ -97,11 +97,15 @@ describe('standalone share pages', () => {
     expect(decodeURIComponent(hrefs(routinePageHTML(state, routine)).find(href => href.startsWith('https://claude.ai/new?q=')))).toContain('Push')
   })
 
-  it('falls back to base provider URLs when the encoded prompts are too large', () => {
+  it('uses a prefilled summary of the page when an explicit prompt exceeds the URL budget', () => {
     const html = workoutPageHTML(state, workout, { aiText: '🏋️'.repeat(4000) })
-    expect(hrefs(html)).toContain('https://chatgpt.com/')
-    expect(hrefs(html)).toContain('https://claude.ai/new')
-    expect(html).not.toContain('?q=')
+    const providers = hrefs(html).filter(href => href.startsWith('https://chatgpt.com/') || href.startsWith('https://claude.ai/new'))
+    expect(providers).toHaveLength(2)
+    for (const href of providers) {
+      expect(href.length).toBeLessThanOrEqual(7000)
+      expect(new URL(href).searchParams.get('q')).toContain('80×8 kg')
+      expect(new URL(href).searchParams.get('q')).not.toContain('clipboard')
+    }
   })
 
   it('replaces lone surrogates in explicit and default AI prompts without losing valid pairs', () => {

@@ -29,7 +29,7 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { normalizeRepRange } from './lib/rep-range.js'
 import { MOBILE, shareExport, printHtml, shareText, copyText, shareBlob } from './lib/mobile.js'
 import { sessionShareText } from './lib/session-share.js'
-import { SESSION_CONTEXT_FLAGS, sessionHandoffText } from './lib/ai-handoff.js'
+import { SESSION_CONTEXT_FLAGS, sessionCompactHandoffText, sessionHandoffText } from './lib/ai-handoff.js'
 import { workoutPageHTML, pageFileName } from './lib/share-page.js'
 import { isShareCancellation, shareHtmlPage } from './lib/share-html.js'
 import { AiShareButtons } from './components/AiButtons.jsx'
@@ -1702,6 +1702,7 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
   const workout = { ...w, context }
   const text = sessionShareText(st, workout, prs, e1prs)
   const handoff = () => sessionHandoffText(st, workout, { prs, e1prs, context })
+  const compactHandoff = () => sessionCompactHandoffText(st, workout, { prs, e1prs, context })
   const saveContext = next => update(s => {
     const rec = s.workouts.find(record => record.id === w.id)
     if (!rec) return
@@ -1791,7 +1792,7 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
       <input className="input ai-context-note" maxLength={300} value={note} disabled={!saved}
         aria-label={t('Anything else?')} placeholder={t('Anything else?')}
         onChange={e => { noteRef.current = e.target.value; setNote(e.target.value) }} onBlur={saveNote} />
-      <AiShareButtons getText={handoff} />
+      <AiShareButtons getText={handoff} getLinkText={compactHandoff} />
     </section>
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <div ref={mapRef}>
@@ -1808,7 +1809,7 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
     </div>
     <div style={{ height: 8 }} />
     <ShareLink kind="workout" snapshot={() => workoutSnapshot(st, workout, { prs, e1prs })}
-      download={() => shareHtmlPage(workoutPageHTML(st, workout, { prs, e1prs, accent: ACCENTS[st.accent] || ACCENTS.lime, aiText: handoff() }), pageFileName('workout', workout.name, workout.d))} />
+      download={() => shareHtmlPage(workoutPageHTML(st, workout, { prs, e1prs, accent: ACCENTS[st.accent] || ACCENTS.lime, aiText: compactHandoff() }), pageFileName('workout', workout.name, workout.d))} />
     <div style={{ height: 8 }} />
     <Button variant="tinted" icon="download" onClick={downloadMap} disabled={!mapReady || !!busy} aria-busy={busy === 'map'}>
       {busy === 'map' ? t('Preparing…') : t('Download body map')}

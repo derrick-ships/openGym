@@ -2,7 +2,8 @@ import { EXIDX } from './exercises.js'
 import { DAYN, fmtDate, fmtDur, fmtNum, weekOrder, weekStartOf } from './format.js'
 import { fmtSec, isBw, isPerSide, modeOf, setsDone, sideReps, workSetsDone } from './history.js'
 import { loadOfWorkouts, MUSCLE_NAME } from './muscles.js'
-import { sessionShareText, setText } from './session-share.js'
+import { setText } from './session-share.js'
+import { aiDeepLink, fitSharedHandoffText, routineCompactHandoffText, sessionCompactHandoffText } from './ai-handoff.js'
 import { isWarmupRow } from './workout-model.js'
 
 export const DEPLOY_AI_PROMPT = 'Help me deploy openGym using the cheapest suitable option. First ask whether I have a GitHub account, a domain, a VPS, and a payment card. Then explain the costs and guide me one step at a time, waiting for my confirmation after each step. Use the openGym deployment guide at https://github.com/derrick-ships/openGym/blob/main/docs/DEPLOY_LOW_COST.md and explain how to back up my data.'
@@ -16,26 +17,19 @@ const exerciseName = (S, entry) => exerciseFor(S, entry).n || entry.n || entry.n
 const completed = set => !!(set?.done || set?.sides?.L?.done || set?.sides?.R?.done)
 const number = value => fmtNum(Number(value) || 0)
 
-function aiLink(base, text) {
-  const source = String(text)
-  const safe = typeof source.toWellFormed === 'function'
-    ? source.toWellFormed()
-    : source.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
-  const link = `${base}?q=${encodeURIComponent(safe)}`
-  return link.length <= 7000 ? link : base
-}
-
 const chatGlyph = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.4c2.7-1.1 5.4.5 5.5 3.1 2.9.3 4.1 3.2 2.4 5.2 1.5 2.4.1 5.1-2.6 5.2-.6 2.8-3.6 3.7-5.3 1.8-2.4 1.5-5.2.3-5.3-2.5-2.8-.7-3.7-3.5-1.8-5.3-1.4-2.5 0-5.2 2.7-5.2.7-2.6 3.3-3.6 5.4-2.3Z"/><path d="m8 9 4-2.3L16 9v5l-4 2.3L8 14Z"/></svg>'
 const claudeGlyph = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9 4.9 19.1M8.2 2.8l7.6 18.4M21.2 8.2 2.8 15.8M15.8 2.8 8.2 21.2M2.8 8.2l18.4 7.6"/></svg>'
 
-function closingSections(prompt) {
+function closingSections(prompt, fallback) {
+  const link = id => aiDeepLink(id, fitSharedHandoffText(prompt, id, null, text => text) ||
+    fitSharedHandoffText(fallback, id, null, text => text), { kind: 'share' })
   return `<section class="ai-panel">
   <div class="eyebrow">A LITTLE PERSPECTIVE</div>
   <h2>Ask an AI about this<span class="accent-dot">.</span></h2>
   <p>Get a second opinion, explore your progress, or ask what to do next. Your training details are sent when you open a link.</p>
-  <div class="ai-actions"><a class="ai-button chat" href="${escapeHtml(aiLink('https://chatgpt.com/', prompt))}">${chatGlyph}<span>Open in ChatGPT</span><span class="arrow" aria-hidden="true">↗</span></a>
-  <a class="ai-button claude" href="${escapeHtml(aiLink('https://claude.ai/new', prompt))}">${claudeGlyph}<span>Open in Claude</span><span class="arrow" aria-hidden="true">↗</span></a></div>
-  <p class="ai-hint">If your details are too long for a link, the AI opens without them.</p>
+  <div class="ai-actions"><a class="ai-button chat" href="${escapeHtml(link('chatgpt'))}">${chatGlyph}<span>Open in ChatGPT</span><span class="arrow" aria-hidden="true">↗</span></a>
+  <a class="ai-button claude" href="${escapeHtml(link('claude'))}">${claudeGlyph}<span>Open in Claude</span><span class="arrow" aria-hidden="true">↗</span></a></div>
+  <p class="ai-hint">For long workouts and routines, the link includes a shorter summary.</p>
 </section>
 <section class="own-panel"><div class="eyebrow">YOUR TRAINING. YOUR DATA.</div><h2>Run your own openGym<span class="accent-dot">.</span></h2>
   <p>openGym is a free, open-source workout tracker you can run yourself. Use the Android app without a server or host your own instance to sync across devices.</p>
@@ -44,7 +38,7 @@ function closingSections(prompt) {
 </section><footer>Made with openGym · AGPL-3.0</footer>`
 }
 
-function documentHTML(title, accent, body, prompt) {
+function documentHTML(title, accent, body, prompt, fallback) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><title>${escapeHtml(title)} · openGym</title><style>
 :root{color-scheme:dark;--accent:${accentColor(accent)};--bg:#101210;--surface:#191c19;--raised:#20241f;--ink:#f3f5ec;--muted:#a4aca0;--faint:#767f73;--line:rgba(230,244,220,.11)}
 *{box-sizing:border-box}
@@ -160,7 +154,7 @@ details{display:none}
 footer{padding-bottom:0}
 }
 
-</style></head><body><div class="page"><div class="top"><div class="brand"><span class="brand-mark"></span>openGym</div><div class="top-note">A record worth keeping</div></div>${body}${closingSections(prompt)}</div></body></html>`
+</style></head><body><div class="page"><div class="top"><div class="brand"><span class="brand-mark"></span>openGym</div><div class="top-note">A record worth keeping</div></div>${body}${closingSections(prompt, fallback)}</div></body></html>`
 }
 
 const stat = (label, value, unit = '', sub = '') => `<div class="stat"><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${escapeHtml(value)}${unit ? ` <small>${escapeHtml(unit)}</small>` : ''}</div>${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ''}</div>`
@@ -192,8 +186,8 @@ export function workoutPageHTML(S = {}, w = {}, { prs = [], e1prs = [], accent =
 ${muscles.length ? `<section class="section">${heading('Muscles worked')}<div class="pills">${muscles.map(muscle => `<span class="pill">${escapeHtml(muscle)}</span>`).join('')}</div></section>` : ''}
 ${records ? `<section class="section">${heading('Personal records')}<div class="pr-list">${records}</div></section>` : ''}
 ${w.note ? `<section class="section">${heading('Session note')}<p class="note">${escapeHtml(w.note)}</p></section>` : ''}`
-  const prompt = aiText ?? `Review my openGym workout. Give me useful, practical feedback and ask about my goals before suggesting changes.\n\n${sessionShareText({ ...S, unit }, workout, prs, e1prs)}`
-  return documentHTML(w.name || 'Workout', accent, body, prompt)
+  const fallback = sessionCompactHandoffText({ ...S, unit }, workout, { prs, e1prs, shared: true })
+  return documentHTML(w.name || 'Workout', accent, body, aiText ?? fallback, fallback)
 }
 
 function prescription(entry, S) {
@@ -224,9 +218,8 @@ export function routinePageHTML(S = {}, routine = {}, { accent = '#a3e635', aiTe
 <section class="section">${heading('The plan', `${entries.length} ${entries.length === 1 ? 'exercise' : 'exercises'}`)}${exercises || '<p class="note">No exercises in this routine yet.</p>'}</section>
 ${days.length ? `<section class="section">${heading('Scheduled days')}<div class="pills">${days.map(day => `<span class="pill">${escapeHtml(day)}</span>`).join('')}</div></section>` : ''}
 ${routine.note ? `<section class="section">${heading('Routine note')}<p class="note">${escapeHtml(routine.note)}</p></section>` : ''}`
-  const routineText = details.map(({ name, scheme, rest, group }) => `${name}: ${scheme}${rest != null ? `, ${number(rest)}s rest` : ''}${group ? `, superset ${group}` : ''}`).join('\n')
-  const prompt = aiText ?? `Review my openGym routine and suggest practical improvements. Ask about my goals and experience first.\n\n${routine.name || 'Routine'}${days.length ? ` (${days.join(', ')})` : ''}\n${routineText}${routine.note ? `\nNote: ${routine.note}` : ''}`
-  return documentHTML(routine.name || 'Routine', accent, body, prompt)
+  const fallback = routineCompactHandoffText(S, routine, { shared: true })
+  return documentHTML(routine.name || 'Routine', accent, body, aiText ?? fallback, fallback)
 }
 
 export function pageFileName(kind, name, date) {

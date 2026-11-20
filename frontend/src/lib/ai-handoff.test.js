@@ -222,6 +222,71 @@ describe('sessionHandoffText', () => {
   })
 })
 
+describe('compact handoffs', () => {
+  it('fits all 25 realistic five-set exercises, context, and at most eight changes for both providers', () => {
+    const names = [
+      'Barbell back squat', 'Dumbbell bench press', 'Chest-supported dumbbell row', 'Romanian deadlift', 'Lat pulldown',
+      'Seated cable row', 'Dumbbell shoulder press', 'Front-foot elevated split squat', 'Cable triceps pushdown', 'Incline dumbbell curl',
+      'Cable lateral raise', 'Barbell hip thrust', 'Seated leg curl', 'Leg extension', 'Standing calf raise',
+      'Cable face pull', 'Pec deck fly', 'Reverse fly', 'Dumbbell hammer curl', 'Overhead cable triceps extension',
+      'Leg press', 'Hip abduction', 'Cable crunch', 'Pull-up', 'Plank',
+    ]
+    const customEx = names.map((n, i) => ({ id: `long-${i}`, n }))
+    const makeEntries = delta => customEx.map(({ id }, i) => {
+      const weight = 25 + i * 2.5 + delta
+      return {
+        id, ...(i < 5 && { note: 'Controlled eccentric; add load only when all three sets feel clean.' }),
+        ...(i === 23 ? { target: { bodyweight: true }, sets: [10, 9, 8, 8, 7].map(r => reps(0, r)) }
+          : i === 24 ? { sets: [45, 45, 45, 30, 30].map(sec => hold(sec + delta)) }
+          : { sets: [reps(weight - 15, 10, { warmup: true }), reps(weight - 5, 8, { warmup: true }), ...Array(3).fill(reps(weight, 8))] }),
+      }
+    })
+    const current = workout('long-latest', '2026-11-17', { name: 'Full body strength', end: Date.parse('2026-11-17T11:35:00Z'), vol: 15720, entries: makeEntries(0), context: { flags: ['poor-sleep'], note: 'Long travel day' } })
+    const S = { unit: 'kg', customEx, workouts: [workout('long-before', '2026-11-10', { name: current.name, vol: 14600, entries: makeEntries(-2.5) })] }
+    const options = { prs: ['long-0'] }
+    const compact = handoff.sessionCompactHandoffText(S, current, options)
+    const full = sessionHandoffText(S, current, options)
+    expect(compact).toContain('Full body strength')
+    expect(compact).toContain('2026-11-17')
+    expect(compact).toContain('Duration:')
+    expect(compact).toContain('Volume:')
+    expect(compact).toContain('Slept badly; Long travel day')
+    expect(compact).toMatch(/Barbell back squat.*10×10 kg wu.*3×8 @ 25 kg.*\(PR\)/)
+    expect(compact).toMatch(/Pull-up.*bw×10/)
+    expect(compact).toMatch(/Plank.*45s/)
+    expect(compact).not.toContain('all three sets feel clean')
+    expect(full).toContain('all three sets feel clean')
+    const [exercises, comparison] = compact.split('Exercises:\n')[1].split('\n\nCompared')
+    expect(exercises.split('\n')).toHaveLength(25)
+    expect(comparison.match(/\(up\)/g)).toHaveLength(8)
+    expect(comparison).toContain('do not ask me again what happened')
+    for (const id of Object.keys(AI_PROVIDERS)) {
+      const compactPrompt = handoff.providerPrompt(id, compact)
+      expect(handoff.deepLinkFits(id, handoff.providerPrompt(id, full))).toBe(false)
+      expect(handoff.deepLinkFits(id, compactPrompt)).toBe(true)
+      expect(new URL(aiDeepLink(id, compactPrompt)).searchParams.get('q')).toBe(compactPrompt)
+    }
+  })
+
+  it('compacts oversized coach instructions without shortening the clipboard text', () => {
+    const S = { ...state, athlete: { notes: '🏋️'.repeat(200), injuries: 'Private notes '.repeat(70) } }
+    const full = coachSkillText(S, { now: NOW })
+    const compact = coachSkillText(S, { now: NOW, compact: true })
+    expect(handoff.deepLinkFits('chatgpt', handoff.providerPrompt('chatgpt', full))).toBe(false)
+    expect(handoff.deepLinkFits('chatgpt', handoff.providerPrompt('chatgpt', compact))).toBe(true)
+    expect(compact).toContain('## Load rules')
+    expect(compact).toContain('## My current numbers')
+  })
+
+  it('keeps each routine prescription on one line without replacing the full copy', () => {
+    const S = { unit: 'kg', athlete: { experience: 'intermediate' } }
+    const routine = { name: 'Upper', ex: [{ id: BENCH, sets: 3, repsMin: 6, repsMax: 8, weight: 60, restSec: 90 }] }
+    expect(handoff.routineCompactHandoffText(S, routine)).toContain('barbell bench press — 3×6–8 @ 60 kg, 90s rest')
+    expect(handoff.routineCompactHandoffText(S, routine)).toContain('Experience: intermediate')
+    expect(routineHandoffText(S, routine)).toContain('Primary muscles:')
+  })
+})
+
 describe('AI deep links', () => {
   it('exports provider metadata and encodes the complete text', () => {
     expect(AI_PROVIDERS).toEqual({
@@ -232,11 +297,25 @@ describe('AI deep links', () => {
     expect(aiDeepLink('constructor', 'A&B')).toBe('https://chatgpt.com/?q=A%26B')
   })
 
-  it('falls back to the base only if the full encoded URL exceeds the limit', () => {
+  it('never opens a bare provider even for empty, oversized, or malformed text', () => {
     const query = 'https://chatgpt.com/?q=%C3%A9'
     expect(aiDeepLink('chatgpt', 'é', { maxUrl: query.length })).toBe(query)
-    expect(aiDeepLink('chatgpt', 'é', { maxUrl: query.length - 1 })).toBe('https://chatgpt.com/')
-    expect(aiDeepLink('claude', 'x'.repeat(7000))).toBe('https://claude.ai/new')
+    for (const [id, provider] of Object.entries(AI_PROVIDERS)) {
+      for (const text of ['', null, undefined, ' '.repeat(10), '🏋️'.repeat(6000), '\uD800'.repeat(1000)]) {
+        const url = aiDeepLink(id, text)
+        expect(url).not.toBe(provider.base)
+        expect(url.length).toBeLessThan(7000)
+        expect(new URL(url).searchParams.get('q')).toBe(handoff.providerPrompt(id, "I just copied my latest openGym session to my clipboard. I'll paste it in my next message — wait for it, then compare it with my previous sessions and update my progress log."))
+      }
+    }
+    expect(new URL(aiDeepLink('chatgpt', 'é', { maxUrl: query.length - 1 })).searchParams.get('q')).toContain('wait for it')
+  })
+
+  it('uses a short prompt about the right handoff when the original does not fit', () => {
+    const long = '💪'.repeat(2000)
+    expect(new URL(aiDeepLink('claude', long, { kind: 'routine' })).searchParams.get('q')).toMatch(/Project[\s\S]*routine.*clipboard/)
+    expect(new URL(aiDeepLink('chatgpt', long, { kind: 'coach' })).searchParams.get('q')).toMatch(/coach instructions.*clipboard/)
+    expect(new URL(aiDeepLink('chatgpt', long, { kind: 'share' })).searchParams.get('q')).not.toMatch(/clipboard/)
   })
 })
 
@@ -320,7 +399,7 @@ describe('handoff review regressions', () => {
     expect(aiDeepLink('claude', text)).toBe(query)
     expect(handoff.deepLinkFits('claude', text, { maxUrl: query.length })).toBe(true)
     expect(handoff.deepLinkFits('claude', text, { maxUrl: query.length - 1 })).toBe(false)
-    expect(aiDeepLink('claude', text, { maxUrl: query.length - 1 })).toBe('https://claude.ai/new')
+    expect(new URL(aiDeepLink('claude', text, { maxUrl: query.length - 1 })).searchParams.get('q')).toContain('wait for it')
   })
 
   it('uses the routine handoff clock for approximate age', () => {

@@ -6,6 +6,7 @@ import { fmtDate, fmtDur, fmtNum } from '../lib/format.js'
 import { getLang, setLang, t, useLang } from '../lib/i18n.js'
 import { MUSCLE_NAME, rankOf } from '../lib/muscles.js'
 import { api } from '../lib/api.js'
+import { fitSharedHandoffText } from '../lib/ai-handoff.js'
 
 const imageBase = import.meta.env.VITE_IMG_BASE || '/img/'
 const gifBase = import.meta.env.VITE_GIF_BASE || '/gif/'
@@ -89,7 +90,7 @@ function ShareContent({ data }) {
         {s.entries.map((entry, index) => <Exercise key={`${entry.id}-${index}`} entry={entry} />)}
       </section>
       {s.note && <section className="share-session-note share-reveal"><h2>{workout ? t('Session note') : t('Routine note')}</h2><p>{s.note}</p></section>}
-      <section className="share-coach share-reveal"><div><h2>{t('Ask your AI coach')}</h2><p>{t('Take this session further with a coach that knows your numbers.')}</p></div><AiButtons getText={() => s.aiText || s.title} /></section>
+      <section className="share-coach share-reveal"><div><h2>{t('Ask your AI coach')}</h2><p>{t('Take this session further with a coach that knows your numbers.')}</p></div><AiButtons getText={() => s.aiText || ''} getLinkText={(id, text) => fitSharedHandoffText(text, id, s)} kind="share" /></section>
       <footer className="share-footer share-reveal"><a href="/" className="share-brand"><img src="/icon-180.png" alt="" /> <span>openGym</span></a><h2>{t('Run your own openGym')}</h2><p>{t('Your training, your data. A free, open-source workout tracker you can run yourself.')}</p><div className="share-footer-links"><a href="https://github.com/derrick-ships/openGym">{t('Explore the project')} ↗</a><a href="https://github.com/derrick-ships/openGym/blob/main/docs/DEPLOY_LOW_COST.md">{t('Low-cost deploy guide')} ↗</a><a href="/">{t('Get the app')} ↗</a></div></footer>
     </div>
   </main>

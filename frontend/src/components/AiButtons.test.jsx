@@ -31,11 +31,23 @@ describe('AI handoff buttons', () => {
     expect(mocks.copy.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0])
     expect(button(label).querySelector('svg path')).toBeTruthy()
   })
-  it('uses the base URL and asks for a paste when text is too long', async () => {
-    act(() => root.render(<AiShareButtons getText={() => 'x'.repeat(8000)} />))
+  it('opens a compact prompt but copies the full text first', async () => {
+    const full = 'full workout '.repeat(1000)
+    act(() => root.render(<AiShareButtons getText={() => full} getLinkText={() => 'compact workout'} />))
     await act(async () => button('Claude').click())
-    expect(open).toHaveBeenCalledWith('https://claude.ai/new', '_blank', 'noopener')
-    expect(mocks.toast).toHaveBeenCalledWith('Copied. Paste it in Claude.')
+    expect(mocks.copy.mock.calls[0][0]).toContain(full)
+    expect(mocks.copy.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0])
+    expect(new URL(open.mock.calls[0][0]).searchParams.get('q')).toContain('compact workout')
+    expect(mocks.toast).toHaveBeenCalledWith('Opening Claude…')
+  })
+  it('opens a prefilled short prompt and asks for a paste when even the compact text is too long', async () => {
+    const full = 'x'.repeat(9000)
+    act(() => root.render(<AiShareButtons getText={() => full} getLinkText={() => '🏋️'.repeat(1000)} />))
+    await act(async () => button('Claude').click())
+    expect(mocks.copy.mock.calls[0][0]).toContain(full)
+    expect(mocks.copy.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0])
+    expect(new URL(open.mock.calls[0][0]).searchParams.get('q')).toMatch(/Project[\s\S]*clipboard.*wait for it/)
+    expect(mocks.toast).toHaveBeenCalledWith('Copied. Paste it in Claude after it opens.')
   })
   it('still opens the provider when copying fails', async () => {
     mocks.copy.mockRejectedValueOnce(new Error('clipboard unavailable'))

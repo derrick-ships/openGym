@@ -1,6 +1,6 @@
 import { EXIDX } from './exercises.js'
-import { isoOf } from './format.js'
-import { isBw, workoutVolume } from './history.js'
+import { DAYN, fmtDur, isoOf, weekOrder, weekStartOf } from './format.js'
+import { isBw, isPerSide, modeOf, sideReps, workoutVolume } from './history.js'
 import { estimate1RM } from './onerm.js'
 import { routineShareText } from './plan-share.js'
 import { sessionShareText } from './session-share.js'
@@ -35,6 +35,11 @@ export const SESSION_CONTEXT_FLAGS = [
 const WEEK_MS = 7 * 86400_000
 const list = value => Array.isArray(value) ? value : []
 const cleanText = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit).trimEnd() : ''
+const compactLine = (value, limit) => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= limit) return text
+  return text.slice(0, limit - 1).replace(/[\uD800-\uDBFF]$/, '').trimEnd() + '…'
+}
 const numberOf = value => typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
 const entriesOf = w => list(w?.entries).filter(Boolean)
 const numberText = n => String(Math.round(n * 10) / 10)
@@ -43,7 +48,7 @@ const unitOf = S => S.unit || 'kg'
 const startOf = w => w.start || Date.parse(`${w.d}T00:00:00`)
 const dateOf = w => w.d || isoOf(new Date(startOf(w)))
 const nameOf = (S, entry) =>
-  list(S.customEx).find(ex => ex.id === entry.id)?.n || EXIDX[entry.id]?.n || entry.muscleSnapshot?.n || entry.n || entry.id
+  list(S.customEx).find(ex => ex.id === entry.id)?.n || EXIDX[entry.id]?.n || entry.muscleSnapshot?.n || entry.n || entry.name || entry.id
 
 export function athleteOf(S, { now = Date.now() } = {}) {
   const athlete = S?.athlete || {}
@@ -160,10 +165,11 @@ function setText(set, unit, bodyweight) {
   return `${set.r} reps`
 }
 
-export function coachSkillText(S = {}, { now = Date.now() } = {}) {
+export function coachSkillText(S = {}, { now = Date.now(), compact = false } = {}) {
   const athlete = athleteOf(S, { now })
   const sources = labelsFor(athlete.healthSources, HEALTH_SOURCES).join(', ')
-  const profile = profileFields(athlete, now, sources)
+  const fields = profileFields(athlete, now, sources)
+  const profile = compact ? fields.map(field => compactLine(field, 100)) : fields
   const snapshot = progressSnapshot(S, { now })
   const unit = unitOf(S)
   const numbers = [
@@ -232,25 +238,33 @@ function compareSession(S, w, prev, current, before) {
   return { prev, volumeDelta, volumePct: prevVolume > 0 ? volumeDelta / prevVolume * 100 : null, exercises }
 }
 
-export function sessionHandoffText(S = {}, w, { prs = [], e1prs = [], context = w?.context } = {}) {
+const SESSION_INTRO = 'Here is my latest openGym session. Compare it with my previous sessions and update my progress log.'
+const ROUTINE_INTRO = 'Please review and adjust this openGym routine for me. Use my goals, training history, equipment, and schedule; ask about anything important that is missing before suggesting changes.'
+const SHARED_SESSION_INTRO = 'Review this shared openGym workout and give practical feedback.'
+const SHARED_ROUTINE_INTRO = 'Review this shared openGym routine and suggest practical improvements.'
+
+function sessionContext(context, compact) {
   const flags = SESSION_CONTEXT_FLAGS.filter(flag => list(context?.flags).includes(flag.id))
-  const notes = [...flags.map(flag => flag.label), cleanText(context?.note)].filter(Boolean)
-  const offDay = flags.some(flag => flag.id !== 'great')
+  const note = compact ? compactLine(context?.note, 200) : cleanText(context?.note)
+  return { notes: [...flags.map(flag => flag.label), note].filter(Boolean), offDay: flags.some(flag => flag.id !== 'great') }
+}
+
+function sessionFollowup(S, w, { notes, offDay }, compact) {
   const unit = unitOf(S)
-  const lines = ['Here is my latest openGym session. Compare it with my previous sessions and update my progress log.']
-  if (notes.length) lines.push(`How it went: ${notes.join('; ')}`)
-  lines.push('', sessionShareText({ ...S, unit, customEx: list(S.customEx) }, { ...w, entries: entriesOf(w) }, prs, e1prs))
+  const lines = []
   const prev = previousComparable(S, w)
   const current = topSets(w)
   const before = topSets(prev)
   const { volumeDelta, volumePct, exercises } = compareSession(S, w, prev, current, before)
   if (prev) {
     const signed = n => `${n > 0 ? '+' : ''}${numberText(n)}`
-    lines.push('', `Compared with my last ${prev.name || w.name || 'workout'} session (${dateOf(prev)}):`)
+    const name = prev.name || w.name || 'workout'
+    lines.push('', `Compared with my last ${compact ? compactLine(name, 120) : name} session (${dateOf(prev)}):`)
     lines.push(`- Volume change: ${signed(volumeDelta)} ${unit}${volumePct == null ? '' : ` (${signed(volumePct)}%)`}`)
-    for (const ex of exercises) {
+    const changes = compact ? exercises.filter(ex => ex.change !== 'same').slice(0, 8) : exercises
+    for (const ex of changes) {
       const past = ex.before ? ` vs ${setText(ex.before, unit, before.get(ex.id).bodyweight)}` : ''
-      lines.push(`- ${ex.name}: ${setText(ex.now, unit, current.get(ex.id).bodyweight)}${past} (${ex.change})`)
+      lines.push(`- ${compact ? compactLine(ex.name, 80) : ex.name}: ${setText(ex.now, unit, current.get(ex.id).bodyweight)}${past} (${ex.change})`)
     }
   }
   lines.push('')
@@ -262,7 +276,84 @@ export function sessionHandoffText(S = {}, w, { prs = [], e1prs = [], context = 
   } else {
     lines.push('Tell me what to aim for next session.')
   }
-  return lines.join('\n')
+  return lines
+}
+
+export function sessionHandoffText(S = {}, w, { prs = [], e1prs = [], context = w?.context } = {}) {
+  const session = sessionContext(context, false)
+  return [
+    SESSION_INTRO,
+    ...(session.notes.length ? [`How it went: ${session.notes.join('; ')}`] : []),
+    '', sessionShareText({ ...S, unit: unitOf(S), customEx: list(S.customEx) }, { ...w, entries: entriesOf(w) }, prs, e1prs),
+    ...sessionFollowup(S, w, session, false),
+  ].join('\n')
+}
+
+const completed = set => set?.done || set?.sides?.L?.done || set?.sides?.R?.done
+
+function compactSet(row, target, unit, count) {
+  const repeat = count > 1 ? `${count}×` : ''
+  const bw = isBw(target)
+  const mode = modeForSet(row, target)
+  const one = set => {
+    const w = numberText(set.w || 0)
+    const r = numberText(set.r || 0)
+    const load = set.w > 0 ? ` @ ${bw ? '+' : ''}${w} ${unit}` : ''
+    if (mode === 'cardio') return `${repeat}${numberText(set.min || 0)}min @ ${numberText(set.speed || 0)}km/h`
+    if (mode === 'time') return `${repeat}${numberText(set.sec || 0)}s${load}`
+    if (bw) return `${repeat}bw×${r}${load}`
+    return repeat ? `${repeat}${r} @ ${w} ${unit}` : `${w}×${r} ${unit}`
+  }
+  const text = isSideSet(row)
+    ? ['L', 'R'].filter(side => row.sides[side].done).map(side => `${side} ${one(row.sides[side])}`).join(' / ')
+    : one(row)
+  return `${text}${isWarmupRow(row) ? ' wu' : ''}`
+}
+
+function compactExercise(S, entry, rows, hasPR) {
+  const target = { ...(entry.target || entry), id: entry.id }
+  const unit = unitOf(S)
+  const groups = []
+  for (const row of rows) {
+    const label = compactSet(row, target, unit, 1)
+    const last = groups.at(-1)
+    if (last?.label === label) last.count++
+    else groups.push({ row, label, count: 1 })
+  }
+  const sets = groups.map(({ row, count }) => compactSet(row, target, unit, count)).join(', ')
+  const note = compactLine(entry.note, 42)
+  return `- ${compactLine(nameOf(S, entry), 100)} — ${sets}${hasPR || rows.some(row => row.pr) ? ' (PR)' : ''}${note ? `; note: ${note}` : ''}`
+}
+
+// Check the budget on the final text, including the omission notice and the closing instructions.
+function exerciseText(header, rows, footer, fits, omitted = 0) {
+  for (let n = rows.length; n >= 0; n--) {
+    const remaining = rows.length - n + omitted
+    const text = [...header, ...rows.slice(0, n), ...(remaining ? [`…and ${remaining} more exercises`] : []), ...footer].join('\n')
+    if (fits(text)) return text
+  }
+  return ''
+}
+
+export function sessionCompactHandoffText(S = {}, w = {}, { prs = [], e1prs = [], context = w.context, shared = false, maxChars = Infinity } = {}) {
+  const session = sessionContext(shared ? null : context, true)
+  const unit = unitOf(S)
+  const note = compactLine(w.note, 160)
+  const header = [shared ? SHARED_SESSION_INTRO : SESSION_INTRO,
+    ...(session.notes.length ? [`How it went: ${session.notes.join('; ')}`] : []),
+    '', compactLine(w.name || 'Workout', 120), dateOf(w),
+    ...(w.start && w.end >= w.start ? [`Duration: ${fmtDur(w.end - w.start)}`] : []),
+    `Volume: ${numberText(w.vol ?? workoutVolume({ entries: entriesOf(w) }))} ${unit}`,
+    ...(!shared && w.bw != null ? [`Bodyweight: ${numberText(w.bw)} ${unit}`] : []),
+    ...(note ? [`Note: ${note}`] : []), '', 'Exercises:',
+  ]
+  const prIds = new Set([...prs, ...e1prs.map(pr => pr.id)])
+  const rows = entriesOf(w).flatMap(entry => {
+    const sets = list(entry.sets).filter(completed)
+    return sets.length ? [compactExercise(S, entry, sets, prIds.has(entry.id))] : []
+  })
+  const footer = shared ? [] : sessionFollowup(S, w, session, true)
+  return exerciseText(header, rows, footer, text => text.length <= maxChars)
 }
 
 export const AI_PROVIDERS = {
@@ -286,22 +377,98 @@ function queryUrl(provider, text) {
   return provider.query + encodeURIComponent(wellFormed)
 }
 
-export function deepLinkFits(providerId, text, { maxUrl = 7000 } = {}) {
-  return queryUrl(providerOf(providerId), text).length <= maxUrl
+const SHORT_HANDOFF = {
+  session: "I just copied my latest openGym session to my clipboard. I'll paste it in my next message — wait for it, then compare it with my previous sessions and update my progress log.",
+  routine: "I just copied my openGym routine to my clipboard. I'll paste it in my next message — wait for it, then help me review and adjust the routine.",
+  coach: "I just copied my openGym coach instructions to my clipboard. I'll paste them in my next message — wait for them before coaching me.",
+  share: 'Help me review a shared openGym workout or routine. Ask me about the details before giving advice.',
 }
 
-export function aiDeepLink(providerId, text, { maxUrl = 7000 } = {}) {
+export function deepLinkFits(providerId, text, { maxUrl = 7000 } = {}) {
+  const input = String(text ?? '')
+  return !!input.trim() && queryUrl(providerOf(providerId), input).length <= maxUrl
+}
+
+export function aiDeepLink(providerId, text, { maxUrl = 7000, kind = 'session' } = {}) {
   const provider = providerOf(providerId)
-  const url = queryUrl(provider, text)
-  return url.length <= maxUrl ? url : provider.base
+  const input = String(text ?? '')
+  const url = queryUrl(provider, input)
+  if (input.trim() && url.length <= maxUrl) return url
+  const short = Object.hasOwn(SHORT_HANDOFF, kind) ? SHORT_HANDOFF[kind] : SHORT_HANDOFF.session
+  // An artificially tiny maxUrl may not fit even the fallback; a prompt takes precedence.
+  return queryUrl(provider, providerPrompt(provider.id, short))
+}
+
+// Recover the exercise section of a compact snapshot. Older snapshots used verbose numbered
+// blocks, and may already have been cut mid-line by the server; rebuild those from public data.
+export function fitSharedHandoffText(text, providerId, snapshot, wrap = prompt => providerPrompt(providerId, prompt)) {
+  const fits = prompt => deepLinkFits(providerId, wrap(prompt))
+  if (fits(text) && text.trim()) return text
+  const heading = '\nExercises:\n'
+  const start = text.indexOf(heading)
+  if (start >= 0) {
+    const head = text.slice(0, start)
+    const [section, ...rest] = text.slice(start + heading.length).split('\n\n')
+    const rows = section.split('\n')
+    const notice = rows.at(-1).match(/^…and (\d+) more exercises$/)
+    if (notice) rows.pop()
+    if (rows.every(row => row.startsWith('- '))) {
+      const compact = exerciseText([head, 'Exercises:'], rows, rest.length ? ['', rest.join('\n\n')] : [], fits, Number(notice?.[1] || 0))
+      if (compact) return compact
+    }
+  }
+  if (!snapshot) return ''
+  const workout = snapshot.kind === 'workout'
+  const header = [workout ? SHARED_SESSION_INTRO : SHARED_ROUTINE_INTRO, '', compactLine(snapshot.title, 120), snapshot.date || '',
+    ...(workout && snapshot.durationMs > 0 ? [`Duration: ${fmtDur(snapshot.durationMs)}`] : []),
+    ...(workout && snapshot.stats ? [`Volume: ${snapshot.stats.volume} ${snapshot.unit}`] : []), '', 'Exercises:']
+  const rows = snapshot.entries.map(entry => {
+    const work = workout ? entry.sets.map(set => `${set.label}${set.warmup ? ' wu' : ''}${set.pr ? ' (PR)' : ''}`).join(', ') : entry.scheme
+    return `- ${compactLine(entry.name, 100)} — ${compactLine(work, 200)}`
+  })
+  return exerciseText(header, rows, [], fits)
 }
 
 export function routineHandoffText(S = {}, routine, { now = Date.now() } = {}) {
   const athlete = athleteOf(S, { now })
   const profile = profileFields(athlete, now, labelsFor(athlete.healthSources, HEALTH_SOURCES).join(', '))
   return [
-    'Please review and adjust this openGym routine for me. Use my goals, training history, equipment, and schedule; ask about anything important that is missing before suggesting changes.',
+    ROUTINE_INTRO,
     '', routineShareText(S, routine),
     `My profile: ${profile.join('; ') || 'No profile details logged.'}`,
   ].join('\n')
+}
+
+export function routineCompactHandoffText(S = {}, routine = {}, { now = Date.now(), shared = false, maxChars = Infinity } = {}) {
+  const unit = unitOf(S)
+  const entries = list(routine.ex).filter(Boolean)
+  const groups = new Map()
+  entries.forEach(entry => { if (entry.sg && !groups.has(entry.sg)) groups.set(entry.sg, groups.size + 1) })
+  const days = routine.id == null ? [] : weekOrder(weekStartOf(S)).filter(day => [].concat(S.week?.[day] || []).includes(routine.id)).map(day => DAYN[day])
+  const note = compactLine(routine.note, 160)
+  const header = [shared ? SHARED_ROUTINE_INTRO : ROUTINE_INTRO, '', `Routine: ${compactLine(routine.name || 'Routine', 120)}`,
+    ...(days.length ? [`Schedule: ${days.join(', ')}`] : []), ...(note ? [`Note: ${note}`] : []), '', 'Exercises:',
+  ]
+  const rows = entries.map(entry => {
+    const mode = modeOf(entry)
+    const bw = isBw(entry)
+    const from = entry.repsMin ?? entry.reps ?? entry.repsMax ?? 10
+    const to = entry.repsMax ?? from
+    const reps = from === to ? from : `${from}–${to}`
+    const weight = entry.weight > 0 ? ` @ ${bw ? '+' : ''}${numberText(entry.weight)} ${unit}` : ''
+    const work = mode === 'cardio' ? `${entry.min || 20}min @ ${entry.speed || 8}km/h`
+      : mode === 'time' ? `${entry.sec || 45}s${weight}` : `${reps}${bw ? ' bw' : ''}${weight}`
+    const rest = entry.restSec > 0 ? entry.restSec : S.restSec
+    const details = [
+      ...(mode === 'reps' && isPerSide(entry) ? [`${sideReps(from)}${from === to ? '' : `–${sideReps(to)}`}/side`] : []),
+      ...(entry.warmupSets > 0 ? [`${entry.warmupSets} wu`] : []),
+      ...(rest > 0 ? [`${rest}s rest`] : []), ...(entry.sg ? [`superset ${groups.get(entry.sg)}`] : []),
+    ]
+    const entryNote = compactLine(entry.note, 42)
+    return `- ${compactLine(nameOf(S, entry), 100)} — ${[`${entry.sets || 1}×${work}`, ...details].join(', ')}${entryNote ? `; note: ${entryNote}` : ''}`
+  })
+  const athlete = shared ? null : athleteOf(S, { now })
+  const profile = athlete ? profileFields(athlete, now, labelsFor(athlete.healthSources, HEALTH_SOURCES).join(', ')) : []
+  const footer = profile.length ? ['', `My profile: ${profile.map(field => compactLine(field, 100)).join('; ')}`] : []
+  return exerciseText(header, rows, footer, text => text.length <= maxChars)
 }

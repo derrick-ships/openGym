@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "คัดลอกคำแนะนำสำหรับโค้ชแล้ว",
   "Connected health sources": "แหล่งข้อมูลสุขภาพที่เชื่อมต่อ",
   "Copied. Paste it in {0}.": "คัดลอกแล้ว วางใน {0} ได้เลย",
+  "Copied. Paste it in {0} after it opens.": "คัดลอกแล้ว เมื่อ {0} เปิดขึ้น ให้วางข้อความลงไป",
   "Copy coach instructions": "คัดลอกคำแนะนำสำหรับโค้ช",
   "Could not copy. Please try again.": "คัดลอกไม่สำเร็จ โปรดลองอีกครั้ง",
   "Could not share the page.": "แชร์หน้าไม่สำเร็จ",

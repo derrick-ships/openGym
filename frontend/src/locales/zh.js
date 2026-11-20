@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "教练指令已复制",
   "Connected health sources": "已连接的健康数据源",
   "Copied. Paste it in {0}.": "已复制，请粘贴到 {0}。",
+  "Copied. Paste it in {0} after it opens.": "已复制。打开 {0} 后，请粘贴文本。",
   "Copy coach instructions": "复制教练指令",
   "Could not copy. Please try again.": "复制失败，请重试。",
   "Could not share the page.": "无法分享页面。",

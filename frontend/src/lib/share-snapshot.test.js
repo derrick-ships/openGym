@@ -24,6 +24,23 @@ describe('hosted share snapshots', () => {
     expect(snapshot.aiText).toContain('40×10')
     expect(snapshot.aiText).not.toMatch(/Bodyweight:|Body weight:/i)
   })
+  it('stores a compact prompt under the API limit and leaves private history, context and profile out', () => {
+    const entries = Array.from({ length: 60 }, (_, i) => ({
+      id: `exercise-${i}`, n: `Exercise ${i} ${'深'.repeat(100)}`, sets: Array(5).fill({ w: 40, r: 10, done: true }),
+      note: 'Controlled tempo '.repeat(10),
+    }))
+    const current = { ...workout, context: { note: 'PRIVATE CONTEXT' }, entries }
+    const state = { ...S, workouts: [{ ...workout, name: 'PRIVATE HISTORY', start: 1 }], athlete: { notes: 'PRIVATE PROFILE' } }
+    const result = workoutSnapshot(state, current)
+    expect(result.aiText.length).toBeLessThanOrEqual(6000)
+    expect(result.aiText).toContain('5×10 @ 40 kg')
+    expect(result.aiText).toMatch(/…and [1-9]\d* more exercises/)
+    expect(result.aiText).not.toMatch(/PRIVATE|Bodyweight:|Set 1:/)
+    expect(result.entries).toHaveLength(60)
+    const plan = routineSnapshot(state, { ...routine, ex: entries.map(e => ({ id: e.id, n: e.n, sets: 3, reps: 8 })) })
+    expect(plan.aiText.length).toBeLessThanOrEqual(6000)
+    expect(plan.aiText).not.toContain('PRIVATE PROFILE')
+  })
   it('bounds fields, strips control characters, groups supersets, and builds a routine map', () => {
     const snapshot = routineSnapshot(S, { ...routine, name: 'x'.repeat(150), note: 'a\u0000b', ex: Array(80).fill(routine.ex[0]) }, { aiText: 'z'.repeat(7000), owner: 'a'.repeat(100) })
     expect(snapshot.title).toHaveLength(120)

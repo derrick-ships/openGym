@@ -4,20 +4,23 @@ import * as handoff from '../lib/ai-handoff.js'
 import { copyText } from '../lib/mobile.js'
 import { OpenAIMark, ClaudeMark } from './BrandIcons.jsx'
 
-export function AiButtons({ getText, onCopied, notify }) {
+export function AiButtons({ getText, getLinkText, kind = 'session', onCopied, notify }) {
   const [message, setMessage] = useState('')
   const say = text => { if (notify) notify(text); else setMessage(text) }
   const share = id => {
-    const text = handoff.providerPrompt(id, getText())
+    const fullText = getText()
+    const linkText = getLinkText ? getLinkText(id, fullText) : fullText
+    const text = handoff.providerPrompt(id, fullText)
+    const prompt = linkText ? handoff.providerPrompt(id, linkText) : ''
     const provider = handoff.AI_PROVIDERS[id]
-    const fits = handoff.deepLinkFits(id, text)
+    const fits = handoff.deepLinkFits(id, prompt)
     let copied
     try { copied = copyText(text) } catch { copied = Promise.reject(new Error('clipboard unavailable')) }
-    try { window.open(handoff.aiDeepLink(id, text), '_blank', 'noopener') } catch { /* clipboard remains available */ }
+    try { window.open(handoff.aiDeepLink(id, prompt, { kind }), '_blank', 'noopener') } catch { /* clipboard remains available */ }
     Promise.resolve(copied).then(() => {
-      say(fits ? t('Opening {0}…', provider.name) : t('Copied. Paste it in {0}.', provider.name))
+      say(fits || kind === 'share' ? t('Opening {0}…', provider.name) : t('Copied. Paste it in {0} after it opens.', provider.name))
       onCopied?.()
-    }).catch(() => say(t('Could not copy. Please try again.')))
+    }).catch(() => say(kind === 'share' ? t('Opening {0}…', provider.name) : t('Could not copy. Please try again.')))
   }
   return <><div className="ai-buttons">
     <button type="button" className="ai-button ai-chat" onClick={() => share('chatgpt')}><OpenAIMark /><span>{t('Track it in ChatGPT')}</span></button>

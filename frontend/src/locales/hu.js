@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "Edzői utasítások másolva",
   "Connected health sources": "Kapcsolt egészségügyi források",
   "Copied. Paste it in {0}.": "Másolva. Illeszd be itt: {0}.",
+  "Copied. Paste it in {0} after it opens.": "Másolva. Illeszd be a szöveget, miután megnyílt a(z) {0}.",
   "Copy coach instructions": "Edzői utasítások másolása",
   "Could not copy. Please try again.": "Nem sikerült másolni. Próbáld újra.",
   "Could not share the page.": "Az oldal megosztása nem sikerült.",

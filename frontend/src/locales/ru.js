@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "Инструкции тренеру скопированы",
   "Connected health sources": "Подключённые источники здоровья",
   "Copied. Paste it in {0}.": "Скопировано. Вставьте в {0}.",
+  "Copied. Paste it in {0} after it opens.": "Скопировано. Когда откроется {0}, вставьте туда текст.",
   "Copy coach instructions": "Копировать инструкции тренеру",
   "Could not copy. Please try again.": "Не удалось скопировать. Попробуйте снова.",
   "Could not share the page.": "Не удалось поделиться страницей.",

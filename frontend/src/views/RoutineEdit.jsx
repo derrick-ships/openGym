@@ -19,7 +19,7 @@ import BodyMap, { bodyMapPngBlob } from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
 import { MOBILE, shareBlob, copyText } from '../lib/mobile.js'
 import { routineShareText } from '../lib/plan-share.js'
-import { routineHandoffText } from '../lib/ai-handoff.js'
+import { routineCompactHandoffText, routineHandoffText } from '../lib/ai-handoff.js'
 import { routinePageHTML, pageFileName } from '../lib/share-page.js'
 import { shareHtmlPage } from '../lib/share-html.js'
 import { routineSnapshot } from '../lib/share-snapshot.js'
@@ -507,9 +507,9 @@ export default function RoutineEdit() {
     }}>{shareBusy ? t('Copying…') : t('Share routine')}</Button>
     <div style={{ height: 8 }} />
     <ShareLink kind="routine" snapshot={() => routineSnapshot(S, r)}
-      download={() => shareHtmlPage(routinePageHTML(S, r, { accent: ACCENTS[S.accent] || ACCENTS.lime, aiText: routineHandoffText(S, r) }), pageFileName('routine', r.name))} />
+      download={() => shareHtmlPage(routinePageHTML(S, r, { accent: ACCENTS[S.accent] || ACCENTS.lime, aiText: routineCompactHandoffText(S, r) }), pageFileName('routine', r.name))} />
     <div style={{ height: 8 }} />
-    <AiShareButtons getText={() => routineHandoffText(S, r)} />
+    <AiShareButtons getText={() => routineHandoffText(S, r)} getLinkText={() => routineCompactHandoffText(S, r)} kind="routine" />
     <div style={{ height: 10 }} />
     <Button variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,

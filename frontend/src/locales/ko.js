@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "코치 지침을 복사했습니다",
   "Connected health sources": "연결된 건강 정보",
   "Copied. Paste it in {0}.": "복사했습니다. {0}에 붙여넣으세요.",
+  "Copied. Paste it in {0} after it opens.": "복사했습니다. {0}이 열리면 붙여넣으세요.",
   "Copy coach instructions": "코치 지침 복사",
   "Could not copy. Please try again.": "복사하지 못했습니다. 다시 시도하세요.",
   "Could not share the page.": "페이지를 공유하지 못했습니다.",

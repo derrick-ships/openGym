@@ -14,7 +14,7 @@ import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, isAndroid, shareExport, syncReminder, copyText } from '../lib/mobile.js'
-import { ATHLETE_DEFAULT, HEALTH_SOURCES, coachSkillText } from '../lib/ai-handoff.js'
+import { ATHLETE_DEFAULT, HEALTH_SOURCES, coachSkillText, deepLinkFits, providerPrompt } from '../lib/ai-handoff.js'
 import { AiShareButtons } from '../components/AiButtons.jsx'
 import { listShares, revokeShare } from '../lib/share-snapshot.js'
 import { checkForUpdate, downloadAndInstall } from '../lib/update.js'
@@ -553,7 +553,7 @@ function AiCoachCard({ S, update, toast }) {
           onClick={() => set({ healthSources: sources.includes(id) ? sources.filter(source => source !== id) : [...sources, id] })}>{t(label)}</button>)}
       </div></div>
       <label className="ai-profile-field"><span>{t('Notes')}</span><textarea className="input" rows={2} maxLength={1000} value={athlete.notes} onChange={e => set({ notes: e.target.value })} /></label>
-      <div className="ai-instructions"><strong>{t('Coach instructions')}</strong><Button variant="tinted" icon="clipboard" onClick={copy}>{t('Copy coach instructions')}</Button><AiShareButtons getText={() => coachSkillText(S)} /></div>
+      <div className="ai-instructions"><strong>{t('Coach instructions')}</strong><Button variant="tinted" icon="clipboard" onClick={copy}>{t('Copy coach instructions')}</Button><AiShareButtons getText={() => coachSkillText(S)} getLinkText={(id, text) => deepLinkFits(id, providerPrompt(id, text)) ? text : coachSkillText(S, { compact: true })} kind="coach" /></div>
     </div>
   </Section>
 }

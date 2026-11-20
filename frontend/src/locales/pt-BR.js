@@ -45,6 +45,7 @@ export const PT_BR_OVERRIDES = {
   "Coach instructions copied": "Instruções do treinador copiadas",
   "Connected health sources": "Fontes de saúde conectadas",
   "Copied. Paste it in {0}.": "Copiado. Cole no {0}.",
+  "Copied. Paste it in {0} after it opens.": "Copiado. Cole o texto no {0} assim que ele abrir.",
   "Copy coach instructions": "Copiar instruções do treinador",
   "Could not copy. Please try again.": "Não foi possível copiar. Tente novamente.",
   "Could not share the page.": "Não foi possível compartilhar a página.",

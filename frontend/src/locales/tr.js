@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "Koç talimatları kopyalandı",
   "Connected health sources": "Bağlı sağlık kaynakları",
   "Copied. Paste it in {0}.": "Kopyalandı. {0} içine yapıştırın.",
+  "Copied. Paste it in {0} after it opens.": "Kopyalandı. {0} açıldıktan sonra metni oraya yapıştırın.",
   "Copy coach instructions": "Koç talimatlarını kopyala",
   "Could not copy. Please try again.": "Kopyalanamadı. Tekrar deneyin.",
   "Could not share the page.": "Sayfa paylaşılamadı.",

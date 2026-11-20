@@ -3,9 +3,11 @@ import { CATALOGUE, EXIDX } from './exercises.js'
 import { ACCENTS, DAYN, fmtNum, todayISO, weekOrder, weekStartOf } from './format.js'
 import { exLine, setsDone, workSetsDone } from './history.js'
 import { loadOfRoutine, loadOfWorkouts, muscleGroupsOf } from './muscles.js'
-import { sessionShareText, setText } from './session-share.js'
+import { setText } from './session-share.js'
+import { routineCompactHandoffText, sessionCompactHandoffText } from './ai-handoff.js'
 import { isWarmupRow } from './workout-model.js'
 
+const MAX_AI_TEXT = 6000
 const list = value => Array.isArray(value) ? value : []
 const clean = (value, max, multiline = false) => String(value ?? '')
   .replace(multiline ? /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g : /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '')
@@ -37,7 +39,7 @@ const base = (S, kind, title, date, options) => ({
   unit: S.unit === 'lb' ? 'lb' : 'kg', accent: ACCENTS[S.accent] || ACCENTS.lime,
   body: S.body === 'female' ? 'female' : 'male',
   ...(clean(options.owner, 60) && { owner: clean(options.owner, 60) }),
-  ...(clean(options.aiText, 6000, true) && { aiText: clean(options.aiText, 6000, true) }),
+  ...(clean(options.aiText, MAX_AI_TEXT, true) && { aiText: clean(options.aiText, MAX_AI_TEXT, true) }),
 })
 const commonEntry = (S, entry, groups) => ({
   id: clean(entry.id, 120) || 'unknown', name: nameOf(S, entry), ...mediaOf(S, entry),
@@ -59,8 +61,10 @@ export function workoutSnapshot(S = {}, workout = {}, options = {}) {
     ...prs.map(id => ({ name: nameOf(S, { id }), detail: 'New PR' })),
     ...e1prs.map(pr => ({ name: nameOf(S, pr), detail: clean(`${fmtNum(nonnegative(pr.est))} ${S.unit === 'lb' ? 'lb' : 'kg'} estimated 1RM`, 80) })),
   ].slice(0, 30)
-  const safeWorkout = { ...limited, bw: undefined }
-  const aiText = options.aiText ?? sessionShareText({ ...S, unit: S.unit === 'lb' ? 'lb' : 'kg', customEx: list(S.customEx) }, safeWorkout, prs, e1prs.filter(pr => Number.isFinite(Number(pr.est))))
+  // Public prompts deliberately exclude the athlete profile, body weight, coach context and history.
+  const aiText = options.aiText ?? sessionCompactHandoffText({ ...S, unit: S.unit === 'lb' ? 'lb' : 'kg' }, limited, {
+    prs, e1prs, shared: true, maxChars: MAX_AI_TEXT,
+  })
   return {
     ...base(S, 'workout', workout.name, workout.d, { ...options, aiText }),
     ...(start > 0 && Number.isFinite(start) && { startedAt: Math.round(bounded(start, 8640000000000000)) }),
@@ -84,7 +88,7 @@ export function routineSnapshot(S = {}, routine = {}, options = {}) {
   const entries = list(routine.ex).filter(Boolean).slice(0, 60)
   const groups = groupsOf(entries)
   const days = weekOrder(weekStartOf(S)).filter(day => [].concat(S.week?.[day] || []).includes(routine.id)).map(day => DAYN[day])
-  const aiText = options.aiText ?? [routine.name || 'Routine', ...entries.map(entry => `${nameOf(S, entry)}: ${exLine(entry, S.unit === 'lb' ? 'lb' : 'kg')}`), routine.note || ''].join('\n')
+  const aiText = options.aiText ?? routineCompactHandoffText({ ...S, unit: S.unit === 'lb' ? 'lb' : 'kg' }, { ...routine, ex: entries }, { shared: true, maxChars: MAX_AI_TEXT })
   return {
     ...base(S, 'routine', routine.name, todayISO(), { ...options, aiText }),
     load: boundedLoad(loadOfRoutine({ ...routine, ex: entries })),

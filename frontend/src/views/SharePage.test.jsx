@@ -76,6 +76,26 @@ describe('public share page', () => {
     expect(requestFrame).not.toHaveBeenCalled()
   })
 
+  it.each(['chat', 'claude'])('opens the compact shared workout in %s without needing the clipboard', async provider => {
+    mockReducedMotion(true)
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('clipboard blocked'))
+    const entries = Array.from({ length: 50 }, (_, i) => ({
+      ...snapshot.entries[0], id: String(i), name: `Exercise ${i} ${'深'.repeat(70)}`,
+    }))
+    const aiText = ['Review this shared workout', '', 'Exercises:', ...entries.map(e => `- ${e.name} — 50×8 kg`), '', 'Discuss what to aim for next session.'].join('\n')
+    await renderWorkout({ ...snapshot, entries, aiText })
+    await act(async () => host.querySelector(`.ai-${provider}`).click())
+    const url = open.mock.calls[0][0]
+    const prompt = new URL(url).searchParams.get('q')
+    expect(url.length).toBeLessThanOrEqual(7000)
+    expect(prompt).toContain('Review this shared workout')
+    expect(prompt).toContain('Exercise 0')
+    expect(prompt).toMatch(/…and [1-9]\d* more exercises/)
+    expect(prompt).toContain('Discuss what to aim for next session.')
+    expect(prompt).not.toContain('clipboard')
+  })
+
   it('explains a missing or revoked share', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 404, json: async () => ({ error: 'not_found' }) })
     await act(async () => { root.render(<SharePage />); await Promise.resolve() })

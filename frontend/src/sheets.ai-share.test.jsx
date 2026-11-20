@@ -40,7 +40,11 @@ describe('completed session AI handoff', () => {
     expect(useStore.getState().S.workouts[0].context).toEqual({ flags: ['sick'], note: '' })
     await act(async () => button('Track it in ChatGPT').click())
     expect(mocks.copy.mock.calls[0][0]).toContain('How it went: Sick')
-    expect(open).toHaveBeenCalled()
+    expect(mocks.copy.mock.calls[0][0]).toContain('Set 1:')
+    const prompt = new URL(open.mock.calls[0][0]).searchParams.get('q')
+    expect(prompt).toContain('How it went: Sick')
+    expect(prompt).toMatch(/Exercises:\n- .+ — 20×5/)
+    expect(prompt).not.toContain('Set 1:')
   })
   it('saves a draft on blur, removes empty context, and flushes on unmount', () => {
     act(() => finishWorkout()); renderTop()

@@ -48,6 +48,7 @@ export default {
   "Coach instructions copied": "कोच के निर्देश कॉपी हुए",
   "Connected health sources": "जुड़े हुए स्वास्थ्य स्रोत",
   "Copied. Paste it in {0}.": "कॉपी हुआ। {0} में पेस्ट करें।",
+  "Copied. Paste it in {0} after it opens.": "कॉपी हो गया। {0} खुलने के बाद उसमें पेस्ट करें।",
   "Copy coach instructions": "कोच के निर्देश कॉपी करें",
   "Could not copy. Please try again.": "कॉपी नहीं हो सका। फिर कोशिश करें।",
   "Could not share the page.": "पेज साझा नहीं हो सका।",

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import BodyMap from '../components/BodyMap.jsx'
+import Icon from '../components/Icon.jsx'
 import { AiButtons } from '../components/PublicAiButtons.jsx'
 import { fmtDate, fmtDur, fmtNum } from '../lib/format.js'
 import { getLang, setLang, t, useLang } from '../lib/i18n.js'
@@ -29,9 +30,10 @@ function useReveal() {
 }
 
 function Stat({ label, value, suffix }) {
-  const [number, setNumber] = useState(value)
+  const animate = Number.isFinite(value) && typeof window.requestAnimationFrame === 'function' && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  const [number, setNumber] = useState(() => animate ? 0 : value)
   useEffect(() => {
-    if (!Number.isFinite(value) || !window.requestAnimationFrame || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    if (!animate) return
     let frame, start
     const tick = time => {
       start ??= time
@@ -41,8 +43,8 @@ function Stat({ label, value, suffix }) {
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [value])
-  return <div className="tile share-stat"><div className="l">{label}</div><div className="v">{fmtNum(number)}{suffix && <small> {suffix}</small>}</div></div>
+  }, [animate, value])
+  return <div className="tile share-stat"><div className="l">{label}</div><div className="v">{fmtNum(animate ? number : value)}{suffix && <small> {suffix}</small>}</div></div>
 }
 
 function Exercise({ entry }) {
@@ -52,7 +54,7 @@ function Exercise({ entry }) {
   const media = !failedGif && entry.gif ? asset(gifBase, entry.gif) : image
   return <article className="share-exercise share-reveal">
     <div className="share-media" style={image && media !== image ? { backgroundImage: `url(${JSON.stringify(image)})` } : undefined}>
-      {media ? <img src={media} loading="lazy" alt="" onError={() => { if (!failedGif && entry.gif) setFailedGif(true); else setFailedImage(true) }} /> : <span aria-hidden="true">—</span>}
+      {media ? <img key={media} src={media} loading="lazy" alt="" onError={() => { if (!failedGif && entry.gif) setFailedGif(true); else setFailedImage(true) }} /> : <Icon name="dumbbell" size={36} />}
     </div>
     <div className="share-exercise-content">
       <div className="share-exercise-head"><div><h3>{entry.name}</h3><p>{(entry.muscles || []).map(m => t(MUSCLE_NAME[m] || m)).join(' · ')}</p></div>{entry.superset && <span className="share-superset">{t('Superset')} {entry.superset}</span>}</div>

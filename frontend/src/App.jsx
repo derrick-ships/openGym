@@ -108,8 +108,8 @@ function Shell() {
   }, [user?.id, ready])
   useEffect(() => {
     const onScroll = () => {
-      // Modals pins the body while a sheet is open; scrollY is 0 then, not a position.
-      if (document.body.style.position === 'fixed') return
+      // Sheets and the focus timer pin content; their scrollY is not the view position.
+      if (document.body.style.position === 'fixed' || document.documentElement.classList.contains('focus-timer-open')) return
       scrollPositions.set(pathRef.current, window.scrollY)
     }
     window.addEventListener('scroll', onScroll, { passive: true })

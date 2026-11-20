@@ -30,6 +30,10 @@ export default function FocusTimer({ ref }) {
   useEffect(() => {
     if (!open) return
     const previous = document.activeElement
+    const page = document.documentElement
+    const scrollY = window.scrollY
+    page.style.setProperty('--focus-scroll-offset', `${-scrollY}px`)
+    page.classList.add('focus-timer-open')
     const minimize = () => setChoice({ key, open: false })
     useUI.setState({ focusOpen: true, minimizeFocus: minimize })
     const siblings = [...overlayRef.current.parentElement.children].filter(element => element !== overlayRef.current && element.id !== 'modal-root' && element.id !== 'toast')
@@ -50,6 +54,9 @@ export default function FocusTimer({ ref }) {
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('keydown', onKey)
+      page.classList.remove('focus-timer-open')
+      page.style.removeProperty('--focus-scroll-offset')
+      window.scrollTo(0, scrollY)
       useUI.setState({ focusOpen: false, minimizeFocus: null })
       siblings.forEach((element, index) => { element.inert = wasInert[index] })
       if (previous?.isConnected) previous.focus()

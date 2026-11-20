@@ -66,10 +66,25 @@ describe('focus timer', () => {
     act(() => useUI.setState({ work: hold() }))
     render()
     const overlay = host.querySelector('.focus-timer')
+    expect(host.querySelector('#timer.working')).toBeTruthy()
+    expect(host.querySelectorAll('.focus-timer')).toHaveLength(1)
+    expect(document.documentElement.classList.contains('focus-timer-open')).toBe(true)
     expect(overlay.textContent).toContain('Weighted dead hang with neutral grip')
     expect(overlay.querySelector('[role="timer"]').textContent).toBe('1:15')
     expect(overlay.querySelector('[role="timer"]').getAttribute('aria-live')).toBe('off')
     expect(document.activeElement).toBe(overlay.querySelector('.focus-timer-done'))
+  })
+
+  it('restores the underlying scroll position when minimized', () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    vi.stubGlobal('scrollY', 250)
+    act(() => useUI.setState({ work: hold() }))
+    render()
+    expect(document.documentElement.style.getPropertyValue('--focus-scroll-offset')).toBe('-250px')
+    click(button('Minimize timer'))
+    expect(document.documentElement.style.getPropertyValue('--focus-scroll-offset')).toBe('')
+    expect(scrollTo).toHaveBeenCalledWith(0, 250)
+    scrollTo.mockRestore()
   })
 
   it('clears its native back hook on unmount', () => {
@@ -90,6 +105,7 @@ describe('focus timer', () => {
     expect(host.querySelector('#toast').inert).toBe(false)
     click(button('Minimize timer'))
     expect(bar.inert).toBe(false)
+    expect(document.documentElement.classList.contains('focus-timer-open')).toBe(false)
   })
 
   it('yields Escape and Tab to an open sheet, then minimizes on Escape once closed', () => {

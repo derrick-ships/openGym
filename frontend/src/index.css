@@ -1335,6 +1335,8 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 .coach-cta-chev{color:var(--acc);font-size:15px;flex:none}
 
 /* focus timer */
+html.focus-timer-open,html.focus-timer-open body{overflow:hidden;overscroll-behavior:none}
+html.focus-timer-open #app{position:fixed;left:0;right:0;top:var(--focus-scroll-offset);width:100%}
 #timer.working{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:4px 8px}
 #timer.working .grow{grid-column:1 / -1;grid-row:1}
 #timer.working .t{grid-column:1;grid-row:2}
@@ -1351,7 +1353,7 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 .focus-timer-heading{flex:1;min-width:0;padding-top:5px}
 .focus-timer-eyebrow,.focus-timer-caption{font-size:12px;font-weight:650;letter-spacing:.17em;text-transform:uppercase;color:#aeb3b2}
 .focus-timer-eyebrow{color:var(--acc);margin-bottom:10px}
-.focus-timer-heading h2{font-size:clamp(20px,4vw,32px);font-weight:650;letter-spacing:.025em;line-height:1.2;text-transform:uppercase;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.focus-timer-heading h2{font-size:clamp(20px,4vw,32px);font-weight:650;letter-spacing:.025em;line-height:1.2;text-transform:uppercase;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .focus-timer-minimize{display:grid;place-items:center;flex:none;width:56px;height:56px;border:1px solid #454a49;border-radius:50%;color:#f8f8f5;font-size:23px}
 .focus-timer-minimize:active{background:#292d2c}
 .focus-timer-center{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;gap:16px;padding-bottom:20px}
@@ -1368,4 +1370,10 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 .focus-timer-actions button:active{filter:brightness(.85)}
 .focus-timer button:focus-visible{outline:3px solid #fff;outline-offset:3px}
 @media (prefers-reduced-motion:reduce){.focus-timer-progress i{transition:none}}
-@media (max-height:480px){.focus-timer{padding-top:calc(10px + var(--sat));padding-bottom:calc(10px + var(--sab))}.focus-timer-center{padding:0}.focus-timer-clock{font-size:clamp(64px,52vh,240px)}.focus-timer-clock.long{font-size:clamp(64px,min(34vw,52vh),240px)}.focus-timer-progress{margin-bottom:10px}}
+@media (max-height:480px){
+  .focus-timer{padding-top:calc(10px + var(--sat));padding-bottom:calc(10px + var(--sab))}
+  .focus-timer-center{min-height:0;gap:4px;padding:0}
+  .focus-timer-clock{font-size:clamp(48px,min(40vw,calc(100dvh - 210px)),200px)}
+  .focus-timer-clock.long{font-size:clamp(48px,min(30vw,calc(100dvh - 210px)),200px)}
+  .focus-timer-progress{margin-bottom:10px}
+}

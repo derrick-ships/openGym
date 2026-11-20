@@ -79,7 +79,7 @@ Open the [in-browser demo](https://opengym.duarte-santos.ch/demo/) to explore ex
    curl http://localhost:8080/api/health
    ```
 
-   The health check should return JSON containing `"ok":true`. If pulling images fails, `sudo docker compose up -d --build` builds them from source instead. The `media` container is a one-shot downloader; it may correctly show as exited after success.
+   The health check should return JSON containing `"ok":true`. If pulling images fails, `sudo docker compose up -d --build` builds them from source instead. The `media` container is a one-shot downloader; it may correctly show as exited after success. The remote MCP gateway is optional and is not started by default. If you want it, set `MCP_ENABLED=1`, `MCP_PUBLIC_URL=https://gym.example.com/mcp` and `MCP_CORS_ORIGIN=https://gym.example.com` in `.env` using your own hostname, then run `sudo docker compose --profile mcp up -d`. Without these values, the gateway points to another hostname. See the [MCP guide](../mcp/README.md).
 
 5. **Put HTTPS in front.** Install Caddy for your Linux distribution using the [official instructions](https://caddyserver.com/docs/install), then edit `/etc/caddy/Caddyfile` with your actual hostname:
 

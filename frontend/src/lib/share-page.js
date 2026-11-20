@@ -17,7 +17,11 @@ const completed = set => !!(set?.done || set?.sides?.L?.done || set?.sides?.R?.d
 const number = value => fmtNum(Number(value) || 0)
 
 function aiLink(base, text) {
-  const link = `${base}?q=${encodeURIComponent(text)}`
+  const source = String(text)
+  const safe = typeof source.toWellFormed === 'function'
+    ? source.toWellFormed()
+    : source.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
+  const link = `${base}?q=${encodeURIComponent(safe)}`
   return link.length <= 7000 ? link : base
 }
 
@@ -76,6 +80,7 @@ h2{font-size:clamp(25px,3.5vw,34px);letter-spacing:-.045em;line-height:1.15;font
 .ex-number{font-size:12px;font-weight:700;color:var(--faint)}
 h3{font-size:18px;line-height:1.3;letter-spacing:-.025em;font-weight:650}
 .exercise-name{flex:1;min-width:0}
+.exercise-name h3,h3.exercise-name,.pr-name{text-transform:capitalize}
 .exercise-meta{font-size:12px;color:var(--muted);margin-top:5px}
 .set-table{border-collapse:collapse;width:calc(100% - 38px);margin:17px 0 0 38px;text-align:left}
 .set-table th,.set-table td{padding:9px 12px;border-top:1px solid var(--line);font-size:13px}
@@ -165,7 +170,7 @@ export function workoutPageHTML(S = {}, w = {}, { prs = [], e1prs = [], accent =
   const entries = (w.entries || []).map(entry => ({ ...entry, sets: entry.sets || [] }))
   const workout = { ...w, entries }
   const doneEntries = entries.filter(entry => entry.sets.some(completed))
-  const unit = S.unit || ''
+  const unit = S.unit || 'kg'
   const total = setsDone(workout)
   const work = workSetsDone(workout)
   const date = w.d ? fmtDate(w.d, false, true) : w.start ? new Date(w.start).toLocaleDateString(undefined, { dateStyle: 'medium' }) : ''
@@ -179,15 +184,15 @@ export function workoutPageHTML(S = {}, w = {}, { prs = [], e1prs = [], accent =
   const enriched = { ...workout, entries: entries.map(entry => ({ ...entry, exercise: entry.muscleSnapshot || exerciseFor(S, entry) })) }
   const muscles = Object.entries(loadOfWorkouts([enriched])).sort((a, b) => b[1] - a[1]).map(([slug]) => MUSCLE_NAME[slug] || slug)
   const records = [
-    ...prs.map(id => `<div class="pr"><strong>New PR</strong>${escapeHtml(exerciseName(S, { id }))}</div>`),
-    ...e1prs.map(pr => `<div class="pr"><strong>Best estimated 1RM</strong>${escapeHtml(exerciseName(S, pr))} · ${escapeHtml(number(pr.est))} ${escapeHtml(unit)}</div>`),
+    ...prs.map(id => `<div class="pr"><strong>New PR</strong><span class="pr-name">${escapeHtml(exerciseName(S, { id }))}</span></div>`),
+    ...e1prs.map(pr => `<div class="pr"><strong>Best estimated 1RM</strong><span class="pr-name">${escapeHtml(exerciseName(S, pr))}</span> · ${escapeHtml(number(pr.est))} ${escapeHtml(unit)}</div>`),
   ].join('')
   const body = `<header class="hero"><div class="eyebrow">WORKOUT JOURNAL</div><h1>${escapeHtml(w.name || 'Workout')}</h1><div class="hero-meta">${[date, duration].filter(Boolean).map(value => `<span>${escapeHtml(value)}</span>`).join('')}</div></header>
 <div class="stats">${cards}</div><section class="section">${heading('The work', `${doneEntries.length} ${doneEntries.length === 1 ? 'exercise' : 'exercises'}`)}${exercises || '<p class="note">No completed sets recorded.</p>'}</section>
 ${muscles.length ? `<section class="section">${heading('Muscles worked')}<div class="pills">${muscles.map(muscle => `<span class="pill">${escapeHtml(muscle)}</span>`).join('')}</div></section>` : ''}
 ${records ? `<section class="section">${heading('Personal records')}<div class="pr-list">${records}</div></section>` : ''}
 ${w.note ? `<section class="section">${heading('Session note')}<p class="note">${escapeHtml(w.note)}</p></section>` : ''}`
-  const prompt = aiText ?? `Review my openGym workout. Give me useful, practical feedback and ask about my goals before suggesting changes.\n\n${sessionShareText(S, workout, prs, e1prs)}`
+  const prompt = aiText ?? `Review my openGym workout. Give me useful, practical feedback and ask about my goals before suggesting changes.\n\n${sessionShareText({ ...S, unit }, workout, prs, e1prs)}`
   return documentHTML(w.name || 'Workout', accent, body, prompt)
 }
 

@@ -104,6 +104,57 @@ describe('standalone share pages', () => {
     expect(html).not.toContain('?q=')
   })
 
+  it('replaces lone surrogates in explicit and default AI prompts without losing valid pairs', () => {
+    const malformed = 'High \uD83D low \uDC00 valid 🏋️'
+    const repaired = 'High � low � valid 🏋️'
+    const inputs = [
+      [workoutPageHTML, { ...workout, name: malformed, note: malformed }],
+      [routinePageHTML, { ...routine, name: malformed, note: malformed }],
+    ]
+    for (const [render, item] of inputs) {
+      for (const options of [{}, { aiText: malformed }]) {
+        const html = render(state, item, options)
+        for (const href of hrefs(html).filter(link => link.includes('?q='))) {
+          expect(decodeURIComponent(href)).toContain(repaired)
+        }
+        expect(hrefs(html).filter(link => link.includes('?q='))).toHaveLength(2)
+      }
+    }
+  })
+
+  it('repairs malformed surrogate text on older runtimes without toWellFormed', () => {
+    const original = String.prototype.toWellFormed
+    try {
+      String.prototype.toWellFormed = undefined
+      const prompt = '😀 \uD83D \uDC00 \uD83D\uD83D\uDC00'
+      for (const html of [workoutPageHTML(state, workout, { aiText: prompt }), routinePageHTML(state, routine, { aiText: prompt })]) {
+        const decoded = decodeURIComponent(hrefs(html).find(href => href.startsWith('https://chatgpt.com/?q=')))
+        expect(decoded).toContain('😀 � � �🐀')
+      }
+    } finally {
+      String.prototype.toWellFormed = original
+    }
+  })
+
+  it('uses kg as the default for workout and routine page weights', () => {
+    const noUnit = { ...state, unit: undefined }
+    const html = workoutPageHTML(noUnit, workout, { e1prs: [{ id: '0025', est: 105 }] })
+    expect(html).toContain('80×8 kg')
+    expect(html).toContain('105 kg')
+    expect(html).toContain('<small>kg</small>')
+    expect(decodeURIComponent(hrefs(html).find(href => href.startsWith('https://chatgpt.com/?q=')))).toContain('80×8 kg')
+    const routineHtml = routinePageHTML(noUnit, { ...routine, ex: [{ id: '0025', sets: 3, reps: 8, weight: 80 }] })
+    expect(routineHtml).toContain('3 × 8 · 80 kg')
+  })
+
+  it('capitalizes only rendered exercise-name elements while preserving entered case', () => {
+    const w = workoutPageHTML(state, workout, { prs: ['0025'], e1prs: [{ id: '0025', est: 105 }] })
+    const r = routinePageHTML(state, routine)
+    for (const html of [w, r]) expect(html).toMatch(/\.exercise-name h3,\s*h3\.exercise-name,\s*\.pr-name\s*\{[^}]*text-transform:\s*capitalize/)
+    expect(w).toContain('<span class="pr-name">barbell bench press</span>')
+    expect(r).toContain('Cable &lt;script&gt;alert(1)&lt;/script&gt;')
+  })
+
   it('uses a safe filename and preserves the supplied date', () => {
     expect(pageFileName('workout', 'Push Day!', '2026-11-19')).toBe('opengym-workout-push-day-2026-11-19.html')
     expect(pageFileName('routine', '../Upper & Lower /💪', '')).toBe('opengym-routine-upper-lower.html')

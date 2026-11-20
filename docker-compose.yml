@@ -65,9 +65,10 @@ services:
       default: {}
       opengym: {}
 
-  # Optional remote MCP gateway. It has no /data mount and can only reach the API's scoped
-  # grant endpoints over the private Compose network.
+  # Optional remote MCP gateway. Start with docker compose --profile mcp up -d.
+  # It has no /data mount and can only reach the API's scoped grant endpoints.
   mcp:
+    profiles: [mcp]
     build:
       context: .
       dockerfile: mcp/Dockerfile

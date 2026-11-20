@@ -1,14 +1,13 @@
 // Thai UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
-  'Full-screen timer for timed sets': 'Full-screen timer for timed sets',
-  'Big numbers you can read from across the room.': 'Big numbers you can read from across the room.',
-  'Expand timer': 'Expand timer',
-  'Minimize timer': 'Minimize timer',
-  'Timed set': 'Timed set',
-  'Time remaining': 'Time remaining',
-  'Stop': 'Stop',
-  '10 seconds remaining': '10 seconds remaining',
-  '3 seconds remaining': '3 seconds remaining',
+  'Full-screen timer for timed sets': "ตัวจับเวลาเต็มหน้าจอสำหรับเซตที่จับเวลา",
+  'Big numbers you can read from across the room.': "ตัวเลขขนาดใหญ่ที่อ่านได้จากอีกฝั่งของห้อง",
+  'Expand timer': "ขยายตัวจับเวลา",
+  'Minimize timer': "ย่อตัวจับเวลา",
+  'Timed set': "เซตจับเวลา",
+  'Time remaining': "เวลาที่เหลือ",
+  '10 seconds remaining': "เหลือ 10 วินาที",
+  '3 seconds remaining': "เหลือ 3 วินาที",
   // --- generic ---
   'Confirm': 'ยืนยัน',
   'Cancel': 'ยกเลิก',

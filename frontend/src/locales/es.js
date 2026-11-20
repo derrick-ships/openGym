@@ -6,7 +6,6 @@ export default {
   'Minimize timer': 'Minimizar temporizador',
   'Timed set': 'Serie cronometrada',
   'Time remaining': 'Tiempo restante',
-  'Stop': 'Detener',
   '10 seconds remaining': 'Quedan 10 segundos',
   '3 seconds remaining': 'Quedan 3 segundos',
   'Stretching': 'Estiramientos',

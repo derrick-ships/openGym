@@ -1,14 +1,13 @@
 // Hungarian UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
-  'Full-screen timer for timed sets': 'Full-screen timer for timed sets',
-  'Big numbers you can read from across the room.': 'Big numbers you can read from across the room.',
-  'Expand timer': 'Expand timer',
-  'Minimize timer': 'Minimize timer',
-  'Timed set': 'Timed set',
-  'Time remaining': 'Time remaining',
-  'Stop': 'Stop',
-  '10 seconds remaining': '10 seconds remaining',
-  '3 seconds remaining': '3 seconds remaining',
+  'Full-screen timer for timed sets': "Teljes képernyős időzítő időre végzett sorozatokhoz",
+  'Big numbers you can read from across the room.': "Nagy számok, amelyeket a szoba másik végéből is leolvashatsz.",
+  'Expand timer': "Időzítő nagyítása",
+  'Minimize timer': "Időzítő kicsinyítése",
+  'Timed set': "Időre végzett sorozat",
+  'Time remaining': "Hátralévő idő",
+  '10 seconds remaining': "10 másodperc van hátra",
+  '3 seconds remaining': "3 másodperc van hátra",
   // --- generic ---
   'Confirm': 'Megerősítés',
   'Cancel': 'Mégse',

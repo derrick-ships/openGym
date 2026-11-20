@@ -29,7 +29,7 @@ const nestedText = (set, unit, prefix = '', bodyweight = false) => {
   return parts
 }
 
-const setText = (set, target, unit, entryId = target?.id || '') => {
+export const setText = (set, target, unit, entryId = target?.id || '') => {
   const id = target?.id || entryId
   const label = target ? setLabel(id, set, target) : setLabel(id, set)
   const mode = target

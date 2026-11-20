@@ -56,7 +56,6 @@ export default {
   'Minimize timer': 'Minimize timer',
   'Timed set': 'Timed set',
   'Time remaining': 'Time remaining',
-  'Stop': 'Stop',
   '10 seconds remaining': '10 seconds remaining',
   '3 seconds remaining': '3 seconds remaining',
   'Confirm': 'Confirmer',

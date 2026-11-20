@@ -30,12 +30,19 @@ export default function FocusTimer({ ref }) {
   useEffect(() => {
     if (!open) return
     const previous = document.activeElement
-    const siblings = [...overlayRef.current.parentElement.children].filter(element => element !== overlayRef.current)
+    const page = document.documentElement
+    const scrollY = window.scrollY
+    page.style.setProperty('--focus-scroll-offset', `${-scrollY}px`)
+    page.classList.add('focus-timer-open')
+    const minimize = () => setChoice({ key, open: false })
+    useUI.setState({ focusOpen: true, minimizeFocus: minimize })
+    const siblings = [...overlayRef.current.parentElement.children].filter(element => element !== overlayRef.current && element.id !== 'modal-root' && element.id !== 'toast')
     const wasInert = siblings.map(element => element.inert)
     siblings.forEach(element => { element.inert = true })
     doneRef.current?.focus()
     const onKey = event => {
-      if (event.key === 'Escape') { event.preventDefault(); setChoice({ key, open: false }) }
+      if (useUI.getState().sheets?.length) return
+      if (event.key === 'Escape') { event.preventDefault(); minimize() }
       if (event.key === 'Tab') {
         const buttons = [...overlayRef.current.querySelectorAll('button')]
         const index = buttons.indexOf(document.activeElement)
@@ -47,6 +54,10 @@ export default function FocusTimer({ ref }) {
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('keydown', onKey)
+      page.classList.remove('focus-timer-open')
+      page.style.removeProperty('--focus-scroll-offset')
+      window.scrollTo(0, scrollY)
+      useUI.setState({ focusOpen: false, minimizeFocus: null })
       siblings.forEach((element, index) => { element.inert = wasInert[index] })
       if (previous?.isConnected) previous.focus()
     }
@@ -66,13 +77,13 @@ export default function FocusTimer({ ref }) {
         onClick={() => setChoice({ key, open: false })}><Icon name="minimize" /></button>
     </header>
     <div className="focus-timer-center">
-      <div className="focus-timer-clock" role="timer" aria-live="off">{clock(work.left)}</div>
+      <div className={'focus-timer-clock' + (work.left >= 600 ? ' long' : '')} role="timer" aria-live="off">{clock(work.left)}</div>
       <div className="focus-timer-caption">{t('Time remaining')}</div>
     </div>
     <footer className="focus-timer-footer">
       <div className="focus-timer-progress" aria-hidden="true"><i style={{ transform: `scaleX(${fraction})` }} /></div>
       <div className="focus-timer-actions">
-        <button type="button" className="focus-timer-stop" onClick={stopWork}>{t('Stop')}</button>
+        <button type="button" className="focus-timer-stop" onClick={stopWork}>{t('Cancel')}</button>
         <button type="button" ref={doneRef} className="focus-timer-done" onClick={finishWorkEarly}>{t('Done')}</button>
       </div>
     </footer>

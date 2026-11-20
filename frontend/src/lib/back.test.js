@@ -14,6 +14,12 @@ describe('decideBack', () => {
     expect(decideBack({ top: { id: 's1', locked: true }, canGoBack: true, exitArmed: true })).toBe('ignore')
   })
 
+  it('minimizes focus before history, but sheets take precedence', () => {
+    expect(decideBack({ focusOpen: true, canGoBack: true, exitArmed: true })).toBe('minimize')
+    expect(decideBack({ top: { id: 's1' }, focusOpen: true, canGoBack: true })).toBe('sheet')
+    expect(decideBack({ top: { id: 's1', locked: true }, focusOpen: true })).toBe('ignore')
+  })
+
   it('walks history when nothing is open', () => {
     expect(decideBack({ top: undefined, canGoBack: true, exitArmed: false })).toBe('history')
   })
@@ -25,21 +31,32 @@ describe('decideBack', () => {
 })
 
 function harness() {
-  const calls = { closed: [], toasts: [], back: 0, exit: 0 }
-  let sheets = []
+  const calls = { closed: [], toasts: [], back: 0, exit: 0, minimized: 0 }
+  let sheets = [], focusOpen = false
   let now = 1000
   const handler = makeBackHandler({
     getSheets: () => sheets,
+    getFocusOpen: () => focusOpen,
+    minimizeFocus: () => { calls.minimized++; focusOpen = false },
     closeSheet: id => { calls.closed.push(id); sheets = sheets.filter(s => s.id !== id) },
     toast: m => calls.toasts.push(m),
     goBack: () => { calls.back++ },
     exit: () => { calls.exit++ },
     now: () => now,
   })
-  return { calls, handler, setSheets: s => { sheets = s }, tick: ms => { now += ms } }
+  return { calls, handler, setSheets: s => { sheets = s }, setFocusOpen: v => { focusOpen = v }, tick: ms => { now += ms } }
 }
 
 describe('makeBackHandler', () => {
+  it('minimizes an active focus timer before navigating or exiting', () => {
+    const h = harness()
+    h.setFocusOpen(true)
+    expect(h.handler({ canGoBack: true })).toBe('minimize')
+    expect(h.calls.minimized).toBe(1)
+    expect(h.calls.back).toBe(0)
+    expect(h.handler({ canGoBack: true })).toBe('history')
+  })
+
   it('closes stacked sheets one press at a time', () => {
     const h = harness()
     h.setSheets([{ id: 'a' }, { id: 'b' }])

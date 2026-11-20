@@ -29,6 +29,13 @@ curl http://localhost:8080/api/health      # {"ok":true,...}
 
 Logs: `docker compose logs -f`. Stop: `docker compose down`.
 
+The remote MCP gateway is optional and is not started by the default command. To start it, set
+`MCP_ENABLED=1`, `MCP_PUBLIC_URL=https://gym.example.com/mcp` and
+`MCP_CORS_ORIGIN=https://gym.example.com` in `.env` (substitute your own hostname), then run
+`docker compose --profile mcp up -d`. The gateway URL and origin otherwise default to
+`gym.derrickserna.com`, not your domain. See [the MCP guide](../mcp/README.md) for authentication
+and available scopes. This is separate from the local stdio MCP server.
+
 ## 2. Understand the passkey requirement (important)
 
 openGym signs you in with **passkeys** (WebAuthn). Browsers enforce two rules:

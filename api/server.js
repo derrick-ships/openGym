@@ -20,6 +20,7 @@ import { startCadence } from './coach/cadence.js';
 import { startWarmup } from './coach/warmup.js';
 import { dayReminderPush, restTimerPush, testPush } from './push-messages.js';
 import { verifyError } from './verify-error.js';
+import { isShareId, newShareId, shareTitle, validateSnapshot } from './shares.js';
 import {
   StorageCorruptError, durableAtomicWrite, etagFor, normalizeIfMatch, readJson,
   isSafeId
@@ -1800,15 +1801,22 @@ function json(res, code, obj, extraHeaders) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(extraHeaders || {}) });
   res.end(body);
 }
-function readBody(req, maxBytes = MAX_BODY) {
+function readBody(req, maxBytes = MAX_BODY, { destroyOnLimit = true } = {}) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
     req.on('data', d => {
+      if (size > maxBytes) return;
       size += d.length;
-      if (size > maxBytes) { reject(new Error('body too large')); req.destroy(); return; }
+      if (size > maxBytes) {
+        chunks.length = 0;
+        reject(new Error('body too large'));
+        if (destroyOnLimit) req.destroy();
+        return;
+      }
       chunks.push(d);
     });
     req.on('end', () => {
+      if (size > maxBytes) return;
       try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
       catch { reject(new Error('bad json')); }
     });
@@ -1922,6 +1930,70 @@ function audit(req, ev, f = {}) {
 if (AUDIT_ON) {
   compactAudit();                                // prune on boot, seed auditSeq/auditCount
   setInterval(compactAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
+}
+
+/* ---------- hosted shares ---------- */
+const SHARES_DIR = path.join(DATA, 'shares');
+const MAX_SHARE_BODY = 256 * 1024;
+const MAX_SHARES_PER_USER = 200;
+const MAX_CREATES_PER_HOUR = 30;
+const HOUR_MS = 60 * 60 * 1000;
+const shareCreates = new Map();
+const shareFile = id => path.join(SHARES_DIR, `${id}.json`);
+
+setInterval(() => {
+  const cutoff = Date.now() - HOUR_MS;
+  for (const [uid, times] of shareCreates) if (times.at(-1) <= cutoff) shareCreates.delete(uid);
+}, HOUR_MS).unref();
+
+function readShare(id) {
+  const file = shareFile(id);
+  const record = readJson(file, { missing: undefined });
+  if (record === undefined) return null;
+  if (record?.id !== id || typeof record.uid !== 'string' || typeof record.createdAt !== 'string' ||
+      !Number.isFinite(Date.parse(record.createdAt)) || typeof record.snapshot?.title !== 'string' ||
+      !['routine', 'workout'].includes(record.kind)) {
+    throw new StorageCorruptError(file, new Error('share record has an invalid shape'));
+  }
+  return record;
+}
+
+function sharesFor(uid) {
+  let names;
+  try { names = fs.readdirSync(SHARES_DIR); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  const records = [];
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const id = name.slice(0, -5);
+    if (!isShareId(id)) continue;
+    const record = readShare(id);
+    if (record?.uid === uid) records.push(record);
+  }
+  return records;
+}
+
+function serveShare(res, id) {
+  if (!isShareId(id)) return json(res, 400, { error: 'invalid share id' });
+  try {
+    const record = readShare(id);
+    if (!record) return json(res, 404, { error: 'not_found' });
+    const { kind, createdAt } = record;
+    const validated = validateSnapshot(kind, record.snapshot);
+    if (!validated.ok) throw new StorageCorruptError(shareFile(id), new Error(validated.error));
+    json(res, 200, { id, kind, createdAt, snapshot: validated.snapshot }, {
+      'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex'
+    });
+  } catch (error) { storageFailure(res, error); }
+}
+
+async function readShareBody(req, res) {
+  // Let the 413 reach the client before closing the connection, even for chunked bodies.
+  try { return await readBody(req, MAX_SHARE_BODY, { destroyOnLimit: false }); }
+  catch (error) {
+    if (error.message === 'body too large') json(res, 413, { error: 'body too large' }, { Connection: 'close' });
+    else json(res, 400, { error: 'bad json' });
+  }
 }
 
 /* ---------- routes ---------- */
@@ -2483,6 +2555,60 @@ const routes = {
         json(res, 200, { ok: true, ts: next._ts || null, revision, rev: next._rev }, { ETag: revision });
       } catch (e) { storageFailure(res, e); }
     });
+  },
+
+  'POST /api/shares': async (req, res) => {
+    if (!requireWritable(res)) return;
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readShareBody(req, res);
+    if (body === undefined) return;
+    const kind = body?.kind;
+    const validated = validateSnapshot(kind, body?.snapshot);
+    if (!validated.ok) return json(res, 400, { error: validated.error });
+
+    const now = Date.now();
+    const recent = (shareCreates.get(user.id) || []).filter(ts => ts > now - HOUR_MS);
+    if (recent.length >= MAX_CREATES_PER_HOUR) return json(res, 429, { error: 'rate_limited' });
+    try {
+      // No await between the quota check and write: concurrent creates cannot both take the last slot.
+      if (sharesFor(user.id).length >= MAX_SHARES_PER_USER) return json(res, 409, { error: 'share_limit' });
+      fs.mkdirSync(SHARES_DIR, { recursive: true, mode: 0o700 });
+      let id;
+      do { id = newShareId(); } while (fs.existsSync(shareFile(id)));
+      const createdAt = new Date(now).toISOString();
+      durableAtomicWrite(shareFile(id), JSON.stringify({ id, uid: user.id, kind, createdAt, snapshot: validated.snapshot }), 0o600);
+      shareCreates.set(user.id, [...recent, now]);
+      audit(req, 'share.create', { uid: user.id });
+      json(res, 201, { id, url: `/s/${id}`, createdAt });
+    } catch (error) { storageFailure(res, error); }
+  },
+
+  'GET /api/shares': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    try {
+      const shares = sharesFor(user.id)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .map(record => ({ id: record.id, kind: record.kind, title: shareTitle(record), createdAt: record.createdAt }));
+      json(res, 200, { shares });
+    } catch (error) { storageFailure(res, error); }
+  },
+
+  'POST /api/shares/revoke': async (req, res) => {
+    if (!requireWritable(res)) return;
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readShareBody(req, res);
+    if (body === undefined) return;
+    const id = body?.id;
+    if (!isShareId(id)) return json(res, 400, { error: 'invalid share id' });
+    try {
+      if (readShare(id)?.uid !== user.id) return json(res, 404, { error: 'not_found' });
+      durableUnlink(shareFile(id));
+      audit(req, 'share.revoke', { uid: user.id });
+      json(res, 200, { ok: true });
+    } catch (error) { storageFailure(res, error); }
   },
 
   'POST /api/assets': async (req, res) => {
@@ -3148,6 +3274,8 @@ http.createServer(async (req, res) => {
   const key = req.method + ' ' + url.pathname;
   if (dbError && key !== 'GET /api/health') return storageFailure(res, dbError);
   if (url.pathname.startsWith('/api/assets/') && req.method === 'GET') return serveAsset(req, res, url.pathname.slice('/api/assets/'.length));
+  const shareMatch = /^\/api\/shares\/(.*)$/.exec(url.pathname);
+  if (shareMatch && req.method === 'GET') return serveShare(res, shareMatch[1]);
   const oauthClientMatch = /^\/api\/oauth\/clients\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
   if (oauthClientMatch && req.method === 'GET') {
     if (!MCP_ENABLED) return json(res, 404, { error: 'feature disabled' });

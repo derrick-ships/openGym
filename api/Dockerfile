@@ -56,7 +56,7 @@ RUN adduser -D -H -s /sbin/nologin coach
 RUN npm ci --omit=dev && npm cache clean --force
 
 WORKDIR /app
-COPY api/server.js api/push-messages.js api/verify-error.js api/storage.js ./api/
+COPY api/server.js api/push-messages.js api/verify-error.js api/storage.js api/shares.js ./api/
 # The API validates routine exercise ids and serves the same catalogue as the frontend. Keep the
 # generated data file in the image but never mount profile data into any other service.
 COPY api/coach ./api/coach

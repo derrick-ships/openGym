@@ -166,6 +166,13 @@ same device.
 Prefer to keep the whole thing off the open internet? A VPN or an auth proxy (Authelia, Cloudflare
 Access…) in front still works, and composes with the above.
 
+### Shared pages
+
+Published workout and routine snapshots are stored in `data/shares/` and are public to anyone
+with the link, no sign-in needed. Revoke an individual link under **Settings → Shared pages**,
+or delete `data/shares/` on the server to revoke all links. Copies already cached may still be
+available for up to five minutes.
+
 ## 5. Fitting it into an existing stack
 
 The defaults assume openGym is the only thing here: a service called `api` on port 3000, and nginx

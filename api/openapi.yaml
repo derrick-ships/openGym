@@ -46,7 +46,7 @@ info:
       log served by `GET /api/admin/audit`.
 
     ### Conventions
-    - Every response body is JSON with `Cache-Control: no-store`.
+    - Response bodies are JSON with `Cache-Control: no-store` unless documented otherwise.
     - Errors are always `{"error": "<human-readable message>"}`.
     - Unknown method+path pairs return `404 {"error":"not found"}`; an unhandled
       exception returns `500 {"error":"server error"}`.
@@ -76,6 +76,8 @@ tags:
     description: Mobile-app pairing (code from a signed-in browser tab)
   - name: data
     description: Per-user state sync (the whole app state as one JSON blob)
+  - name: shares
+    description: Public links to immutable workout and routine snapshots
   - name: push
     description: Web Push (VAPID) subscriptions, rest-timer and test pushes
   - name: activity
@@ -625,6 +627,146 @@ paths:
                 properties:
                   rev: { type: integer }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/shares:
+    post:
+      tags: [shares]
+      operationId: createShare
+      summary: Publish a workout or routine snapshot
+      description: >-
+        Requires a session and the usual CSRF checks. The snapshot cannot be edited.
+        It is visible to anyone with the link. Limit 200 existing shares and 30 creates
+        in a rolling hour per account. The entire JSON request is limited to 256 KiB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, snapshot]
+              properties:
+                kind: { $ref: '#/components/schemas/ShareKind' }
+                snapshot: { $ref: '#/components/schemas/ShareSnapshot' }
+              description: The two kind values must match.
+      responses:
+        '201':
+          description: Snapshot created. The URL is relative to the instance origin.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, url, createdAt]
+                properties:
+                  id: { $ref: '#/components/schemas/ShareId' }
+                  url: { type: string, example: /s/Ab12Cd34Ef56 }
+                  createdAt: { type: string, format: date-time }
+        '400': { description: Malformed JSON or invalid snapshot. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Cross-origin request refused. }
+        '409':
+          description: Account share limit reached. No existing share is deleted.
+          content:
+            application/json:
+              example: { error: share_limit }
+        '413': { description: Request body exceeds 256 KiB. }
+        '429': { description: Hourly creation limit reached. }
+        '503': { description: Persistent storage unavailable. }
+    get:
+      tags: [shares]
+      operationId: listShares
+      summary: List the signed-in user's shares
+      responses:
+        '200':
+          description: Share summaries, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shares]
+                properties:
+                  shares:
+                    type: array
+                    maxItems: 200
+                    items:
+                      type: object
+                      required: [id, kind, title, createdAt]
+                      properties:
+                        id: { $ref: '#/components/schemas/ShareId' }
+                        kind: { $ref: '#/components/schemas/ShareKind' }
+                        title: { type: string, maxLength: 120 }
+                        createdAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { description: Persistent storage unavailable. }
+
+  /api/shares/{id}:
+    get:
+      tags: [shares]
+      operationId: getShare
+      summary: Read a published snapshot without a session
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { $ref: '#/components/schemas/ShareId' }
+      responses:
+        '200':
+          description: The saved snapshot. Never includes the owner's user ID.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: 'public, max-age=300' }
+            X-Robots-Tag:
+              schema: { type: string, const: noindex }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id, kind, createdAt, snapshot]
+                properties:
+                  id: { $ref: '#/components/schemas/ShareId' }
+                  kind: { $ref: '#/components/schemas/ShareKind' }
+                  createdAt: { type: string, format: date-time }
+                  snapshot: { $ref: '#/components/schemas/ShareSnapshot' }
+        '400': { description: Malformed share ID. }
+        '404':
+          description: Share is missing or revoked.
+          content:
+            application/json:
+              example: { error: not_found }
+        '503': { description: Persistent storage unavailable. }
+
+  /api/shares/revoke:
+    post:
+      tags: [shares]
+      operationId: revokeShare
+      summary: Delete a share owned by the signed-in user
+      description: Requires a session and the usual CSRF checks. Previously cached copies may remain for up to five minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { $ref: '#/components/schemas/ShareId' }
+      responses:
+        '200':
+          description: Share deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { description: Malformed JSON or share ID. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Cross-origin request refused. }
+        '404':
+          description: Unknown share or share owned by someone else.
+          content:
+            application/json:
+              example: { error: not_found }
+        '413': { description: Request body exceeds 256 KiB. }
+        '503': { description: Persistent storage unavailable. }
 
   /api/push/public-key:
     get:
@@ -1198,6 +1340,102 @@ components:
         name: { type: string }
         admin: { type: boolean }
       example: { id: "Zk3q9XyPbA2LmN0v", name: "Ada", admin: false }
+
+    ShareId:
+      type: string
+      minLength: 12
+      maxLength: 12
+      pattern: '^[A-Za-z0-9]{12}$'
+
+    ShareKind:
+      type: string
+      enum: [workout, routine]
+
+    ShareSnapshot:
+      type: object
+      additionalProperties: false
+      required: [v, kind, title, date, unit, accent, body, load, entries]
+      description: >-
+        Immutable share snapshot, version 1. String bounds apply after trimming.
+        Control characters are rejected, except line feeds in note and aiText fields.
+        Do not include private data or custom image paths. Owner display name is opt-in.
+      properties:
+        v: { type: integer, const: 1 }
+        kind: { $ref: '#/components/schemas/ShareKind' }
+        title: { type: string, maxLength: 120 }
+        subtitle: { type: string, maxLength: 160 }
+        date: { type: string, format: date, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        startedAt: { type: number, minimum: 0, description: Unix timestamp in milliseconds. }
+        durationMs: { type: number, minimum: 0 }
+        unit: { type: string, enum: [kg, lb] }
+        accent: { type: string, pattern: '^#[0-9A-Fa-f]{6}$' }
+        body: { type: string, enum: [male, female] }
+        owner: { type: string, maxLength: 60 }
+        stats:
+          type: object
+          additionalProperties: false
+          required: [volume, sets, workSets, prs, durationMs]
+          properties:
+            volume: { type: number, minimum: 0 }
+            sets: { type: number, minimum: 0 }
+            workSets: { type: number, minimum: 0 }
+            prs: { type: number, minimum: 0 }
+            durationMs: { type: number, minimum: 0 }
+        load:
+          type: object
+          maxProperties: 40
+          propertyNames: { pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+          additionalProperties: { type: number, minimum: 0 }
+          description: Body-map intensities by muscle slug.
+        entries:
+          type: array
+          maxItems: 60
+          items: { $ref: '#/components/schemas/ShareEntry' }
+        prs:
+          type: array
+          maxItems: 30
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, detail]
+            properties:
+              name: { type: string, maxLength: 120 }
+              detail: { type: string, maxLength: 80 }
+        note: { type: string, maxLength: 500 }
+        days:
+          type: array
+          maxItems: 7
+          items: { type: string, maxLength: 20 }
+        aiText: { type: string, maxLength: 6000 }
+
+    ShareEntry:
+      type: object
+      additionalProperties: false
+      required: [id, name, muscles, sets]
+      properties:
+        id: { type: string, maxLength: 120 }
+        name: { type: string, maxLength: 120 }
+        img: { type: string, pattern: '^[\w.-]{1,120}\.(jpg|jpeg|png|webp)$' }
+        gif: { type: string, pattern: '^[\w.-]{1,120}\.gif$' }
+        muscles:
+          type: array
+          maxItems: 12
+          items: { type: string, maxLength: 40 }
+        scheme: { type: string, maxLength: 80 }
+        restSec: { type: number, minimum: 0 }
+        superset: { type: string, maxLength: 8 }
+        note: { type: string, maxLength: 300 }
+        sets:
+          type: array
+          maxItems: 40
+          items:
+            type: object
+            additionalProperties: false
+            required: [label]
+            properties:
+              label: { type: string, maxLength: 80 }
+              warmup: { type: boolean }
+              pr: { type: boolean }
 
     # ------------------------------------------------------------------ WebAuthn
     # These mirror @simplewebauthn/server v13's JSON shapes (themselves the W3C

@@ -20,3 +20,16 @@ Fix: union the added lines, then delete keys no longer referenced by any `t('...
 `pt-br-locale.test.js` counts only with the reviewed values.
 Also: `check-locales` only compares key sets. English placeholders pass it, and a pt-BR key set
 to English shadows a real pt translation. Review values, not just counts.
+
+## 4. On the production server, `docker compose build` can report "Built" without rebuilding
+What broke: after pulling new commits, `docker compose build api web` printed "Built" but
+the image was still the old one, so the new code never shipped.
+Fix: `docker compose build --no-cache api web`, then `docker compose up -d --no-build --force-recreate api web`.
+Check what is actually running: `docker exec opengym-api-1 ls /app/api` and
+`docker image inspect opengym-api:local --format '{{.Created}}'`.
+
+## 5. Exercise media filenames are not just the id
+The images and GIFs are named like `0025-EIeI8Vf.jpg` (see `img` / `gif` in exercises-data.js).
+Test fixtures that guess `0025.jpg` get a 404, and the page shows the placeholder instead of the image.
+Also, raw `chrome --headless --screenshot` captures stats before the count-up finishes and
+before lazy images load. Use Playwright: scroll the page, wait for networkidle, then take a fullPage shot.

@@ -304,6 +304,11 @@ export default function Settings() {
           { value: 'extended-exhale', label: t('Extended exhale') },
           { value: 'bhramari', label: t('Bhramari (humming breath)') },
           { value: 'alternate-nostril', label: t('Alternate nostril') },
+          { value: 'box', label: t('Box breathing') },
+          { value: 'recovery-sprint', label: t('Recovery sprint') },
+          { value: 'resonance-6', label: t('Resonance breathing') },
+          { value: 'triangle', label: t('Triangle breathing') },
+          { value: 'power-breath', label: t('Power breath') },
         ]} />
       <Row icon="bell" iconTint="var(--blue)" title={t('Haptics on breathing cues')}
         subtitle={t('A brief vibration marks each breathing phase.')}>

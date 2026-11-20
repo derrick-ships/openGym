@@ -924,6 +924,7 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 .breathing-guide{display:grid;gap:8px;min-width:0;padding:8px 0 2px;border-top:1px solid var(--sep-op)}
 .breathing-guide-main{display:flex;align-items:center;gap:14px;min-height:72px}
 .breathing-orb{flex:none;width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#d8f0ff 0%,#77c4ff 42%,#1687ed 100%);box-shadow:0 0 26px color-mix(in srgb,var(--blue) 30%,transparent);transform:scale(.82);will-change:transform}
+.breathing-guide[data-expanded="true"] .breathing-orb{animation:none}
 .breathing-orb.inhale{animation:breath-in var(--breath-duration) cubic-bezier(.35,0,.25,1) both;animation-delay:var(--breath-delay)}
 .breathing-orb.exhale{animation:breath-out var(--breath-duration) cubic-bezier(.35,0,.25,1) both;animation-delay:var(--breath-delay)}
 .breathing-orb.second-inhale{animation-name:breath-second;animation-timing-function:cubic-bezier(.35,0,.25,1)}
@@ -947,6 +948,44 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 :root[data-theme="light"] .breathing-safety{color:#57575f}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media (prefers-reduced-motion:reduce){.breathing-orb{transform:none!important;animation:none!important;will-change:auto}}
+/* Full-screen breathing: an isolated dark material keeps the orb legible in both themes. */
+.breathing-expand{display:grid;place-items:center;width:44px;height:44px;flex:none;color:var(--blue);font-size:22px}
+.breathing-focus{position:fixed;inset:0;z-index:90;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:auto;overscroll-behavior:contain;padding:calc(24px + var(--sat)) max(24px,env(safe-area-inset-right,0px)) calc(24px + var(--sab)) max(24px,env(safe-area-inset-left,0px));background:radial-gradient(ellipse at 50% 42%,#182940 0%,#111a2b 36%,#090f1b 80%);color:#f4f8ff}
+.breathing-focus-head,.breathing-focus-footer{position:relative;z-index:1;width:100%;max-width:840px;margin-inline:auto}
+.breathing-focus-head{display:flex;gap:10px;align-items:flex-start}
+.breathing-focus-title{flex:1;min-width:0}
+.breathing-focus-eyebrow{margin-bottom:7px;color:#a1b9ce;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
+.breathing-focus-title h2{font-size:clamp(20px,3vw,29px);line-height:1.16;letter-spacing:-.025em;overflow-wrap:anywhere}
+.breathing-focus-icon{display:grid;place-items:center;width:44px;height:44px;flex:none;border:1px solid #ffffff2e;border-radius:50%;background:#ffffff0a;color:#f4f8ff;font-size:20px}
+.breathing-focus-modes{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.breathing-focus-modes button{min-height:36px;padding:6px 11px;border:1px solid #ffffff26;border-radius:99px;background:#ffffff0a;color:#c5d4e2;font-size:12px}
+.breathing-focus-modes button[aria-pressed="true"]{border-color:#a2d9f1;background:#d0f1ff;color:#102a3e;font-weight:700}
+.breathing-focus-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;gap:clamp(12px,3vh,30px)}
+.breathing-focus-art{--breath-p:0;position:relative;display:grid;place-items:center;width:min(70vw,39vh,350px);aspect-ratio:1;isolation:isolate;pointer-events:none}
+.breathing-field,.breathing-halo,.breathing-sphere{position:absolute;inset:0;border-radius:50%}
+.breathing-field{inset:-45%;background:radial-gradient(circle,#3989bb36 0%,#243e7130 33%,transparent 70%);transform:scale(calc(.93 + .12 * var(--breath-p)))}
+.breathing-halo{border:1px solid #b8e7ff30;box-shadow:inset 0 0 30px #97cfff16,0 0 25px #6da9e324}
+.halo-back{inset:-12%;opacity:.35;transform:scale(calc(.93 + .11 * var(--halo-p,0)))}
+.halo-front{inset:-5%;opacity:.65;transform:scale(calc(.94 + .13 * var(--halo-p,0)))}
+.breathing-sphere{overflow:hidden;transform:perspective(700px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)) scale(calc(.84 + .16 * var(--breath-p) + var(--breath-pulse,0)));background:radial-gradient(circle at 35% 23%,#d7f8ff 0%,#8fd1ef 8%,#4c9ccb 31%,#244f83 62%,#101f45 100%);box-shadow:inset -18px -25px 45px #07172ca6,inset 3px 3px 14px #e9ffff66,0 20px 75px #1c87c955,0 0 35px #6cccfb3b}
+.breathing-fill{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 15%,#b9fff9db 0%,#55d0e2c9 40%,#385dbec9 100%);transform:scaleY(var(--breath-p));transform-origin:bottom;opacity:.72;transition:background 600ms cubic-bezier(.23,1,.32,1)}
+.release .breathing-fill{background:radial-gradient(ellipse at 50% 15%,#befef0db 0%,#62b8d5c9 40%,#705baec9 100%)}
+.breathing-sheen{position:absolute;inset:0;background:radial-gradient(ellipse at 32% 20%,#fff9 0%,#ffffff36 9%,transparent 28%),radial-gradient(ellipse at 75% 78%,#a2e7ff38,transparent 35%);mix-blend-mode:screen}
+.breathing-sheen::after{content:'';position:absolute;inset:0;opacity:.12;background-image:radial-gradient(#e9ffff 0.65px,transparent 1px);background-size:17px 19px}
+.breathing-focus-copy{text-align:center;max-width:80ch;padding:0 8px}
+.breathing-focus-phase{font-size:clamp(36px,7vw,64px);font-weight:700;line-height:1.08;letter-spacing:-.04em}
+.breathing-focus-phase span{display:inline-block;margin-left:12px;color:#a8ccdf;font-size:.4em;font-weight:500;letter-spacing:0;font-variant-numeric:tabular-nums}
+.breathing-focus-cue{margin-top:7px;color:#bbccdc;font-size:clamp(14px,2vw,17px);line-height:1.4}
+.breathing-focus-dots{display:flex;justify-content:center;gap:7px;margin-top:18px}
+.breathing-focus-dots i{width:6px;height:6px;border-radius:50%;background:#ffffff40}.breathing-focus-dots i.filled{background:#9de5ed}
+.breathing-focus-round{margin-top:8px;color:#a9bdcc;font-size:12px}
+.breathing-focus-footer{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px 20px}
+.breathing-focus-rest{display:flex;align-items:baseline;gap:10px;color:#a9bdcc;font-size:12px}.breathing-focus-rest strong{color:#f4f8ff;font-size:23px;font-variant-numeric:tabular-nums}
+.breathing-focus-actions{display:flex;gap:8px}.breathing-focus-actions button{min-width:64px;min-height:42px;padding:0 13px;border:1px solid #ffffff29;border-radius:12px;background:#ffffff12;color:#f4f8ff;font-weight:650}
+.breathing-focus-safety,.breathing-focus-warning{grid-column:1 / -1;margin:0;color:#a9bdcc;font-size:12px;line-height:1.35}.breathing-focus-warning{color:#ffe0a9;font-weight:700}
+.breathing-focus button:focus-visible{outline:3px solid #d0f1ff;outline-offset:3px}.breathing-focus button:active{filter:brightness(.85)}
+@media (prefers-reduced-motion:reduce){.breathing-focus-art *{transform:none!important;transition:none!important}.breathing-focus-art .breathing-fill{opacity:calc(.2 + .52 * var(--breath-p))}}
+@media (max-height:480px) and (orientation:landscape){.breathing-focus{grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto;column-gap:16px;padding-top:calc(10px + var(--sat));padding-bottom:calc(10px + var(--sab))}.breathing-focus-head{grid-column:1/-1}.breathing-focus-stage{grid-column:1/-1;flex-direction:row;gap:8vw}.breathing-focus-art{width:min(32vw,42vh)}.breathing-focus-copy{min-width:30%}.breathing-focus-footer{grid-column:1/-1}.breathing-focus-dots{margin-top:8px}}
 /* work timer (issue #16): the same bar doing the opposite job — outlined and tinted so a
    glance tells "you are holding this" apart from "you are recovering". */
 #timer.working{border:var(--hair) solid var(--acc)}

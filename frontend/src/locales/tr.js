@@ -1,5 +1,12 @@
 // Turkish UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "Toparlanma nefesi",
+  "Resonance breathing": "Rezonans nefesi",
+  "Triangle breathing": "Üçgen nefes",
+  "Power breath": "Enerji nefesi",
+  "Stop if lightheaded": "Başın dönerse dur",
+  "Expand breathing guide": "Nefes rehberini büyüt",
+  "Minimize breathing guide": "Nefes rehberini küçült",
   "New to lifting": "Ağırlık çalışmasına yeni başladım",
   "This workout is no longer saved. Context cannot be edited.": "Bu antrenman artık kayıtlı değil. Bağlam düzenlenemez.",
   "Anything else?": "Başka bir şey?",

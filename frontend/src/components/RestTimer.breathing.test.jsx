@@ -44,7 +44,7 @@ vi.mock('../store/useStore.js', async () => {
   useStore.setState = value => mocks.setStore(typeof value === 'function' ? value(mocks.store) : value)
   return { useStore }
 })
-vi.mock('../lib/breathing-haptics.js', () => ({ phaseBoundaryHaptic: mocks.phaseBoundaryHaptic }))
+vi.mock('../lib/breathing-haptics.js', async importOriginal => ({ ...(await importOriginal()), phaseBoundaryHaptic: mocks.phaseBoundaryHaptic }))
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -82,6 +82,72 @@ afterEach(() => {
 })
 
 describe('breathing guide in the rest timer', () => {
+  it('opens full screen, minimizes back to the same compact guide, and closes without stopping rest', async () => {
+    const currentRest = rest()
+    act(() => useUI.setState({ timer: currentRest }))
+    render()
+    await click(button('Breathe'))
+    expect(host.querySelector('[role="dialog"].breathing-focus')).toBeTruthy()
+    expect(useUI.getState().focusOpen).toBe(true)
+    await click(button('Minimize breathing guide'))
+    expect(host.querySelector('.breathing-focus')).toBeNull()
+    expect(host.querySelector('.breathing-guide')).toBeTruthy()
+    await click(button('Expand breathing guide'))
+    expect(host.querySelector('.breathing-focus')).toBeTruthy()
+    await click(host.querySelector('.breathing-focus [aria-label="Close breathing guide"]'))
+    expect(host.querySelector('.breathing-guide')).toBeNull()
+    expect(useUI.getState().timer).toBe(currentRest)
+  })
+
+  it('minimizes on Android back through the shared callback', async () => {
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+    act(() => useUI.getState().minimizeFocus())
+    expect(host.querySelector('.breathing-focus')).toBeNull()
+    expect(host.querySelector('.breathing-guide')).toBeTruthy()
+  })
+
+  it('stops animation frames when hidden and when the overlay is minimized', async () => {
+    const request = vi.spyOn(window, 'requestAnimationFrame')
+    const cancel = vi.spyOn(window, 'cancelAnimationFrame')
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+    expect(request).toHaveBeenCalled()
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(cancel).toHaveBeenCalled()
+    const count = request.mock.calls.length
+    await act(async () => { vi.advanceTimersByTime(1000); await Promise.resolve() })
+    expect(request).toHaveBeenCalledTimes(count)
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(request.mock.calls.length).toBeGreaterThan(count)
+    const cancellations = cancel.mock.calls.length
+    await click(button('Minimize breathing guide'))
+    expect(cancel.mock.calls.length).toBeGreaterThan(cancellations)
+  })
+
+  it('marks reduced motion on the full-screen guide', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener() {}, removeEventListener() {} })))
+    act(() => useUI.setState({ timer: rest() }))
+    render()
+    await click(button('Breathe'))
+    expect(host.querySelector('.breathing-focus.reduced-motion')).toBeTruthy()
+    vi.unstubAllGlobals()
+  })
+
+  it('does not start an unfinishable round when the first boundary sample is late', async () => {
+    act(() => useUI.setState({ timer: rest(30) }))
+    render()
+    await click(button('Breathe'))
+    await act(async () => { vi.advanceTimersByTime(10001); await Promise.resolve() })
+    expect(host.querySelector('.breathing-phase').textContent).toContain('Inhale')
+    await act(async () => { vi.advanceTimersByTime(10000); await Promise.resolve() })
+    expect(host.querySelector('.breathing-phase').textContent).toContain('Not enough time')
+  })
+
   it('appears only during rest, beside the clock, without replacing rest controls', async () => {
     render()
     expect(button('Breathe')).toBeUndefined()
@@ -233,7 +299,7 @@ describe('breathing guide in the rest timer', () => {
 
     expect(host.querySelector('.breathing-phase').textContent).toContain('Exhale')
     expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledTimes(1)
-    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledWith(false, expect.any(Function))
+    expect(mocks.phaseBoundaryHaptic).toHaveBeenCalledWith(false, expect.any(Function), 'release')
   })
 
   it('restarts from the beginning when the preferred exercise changes while open', async () => {

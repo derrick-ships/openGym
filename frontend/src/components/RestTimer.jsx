@@ -19,6 +19,7 @@ export default function RestTimer({ onExpand }) {
   const { addRest, stopRest, finishWorkEarly, stopWork } = useUI()
   const exerciseId = settings.breathingExercise || 'coherent'
   const [guide, setGuide] = useState(null)
+  const [guideSlot, setGuideSlot] = useState(null)
   const closeGuide = useCallback(() => setGuide(null), [])
   const restIdentity = useRef(null)
   const on = work || timer
@@ -66,7 +67,7 @@ export default function RestTimer({ onExpand }) {
   // with about 30px and stops saying anything. So the rest variant stacks: clock and bar
   // read at a glance, controls get their own row. −15 and +15 sit together in number-line
   // order; Skip is pushed to the far edge, away from the button you tap to buy more time.
-  return (
+  return <>
     <div id="timer" className={`rest${guide ? ' guided' : ''}`}>
       <div className="head">
         <div className="t">{clock(timer.left)}</div>
@@ -82,19 +83,23 @@ export default function RestTimer({ onExpand }) {
           icon={guide ? 'xmark' : undefined}
         >{guide ? null : t('Breathe')}</Button>
       </div>
-      {guide && <BreathingGuide
-        key={guide.exerciseId}
-        exerciseId={guide.exerciseId}
-        hapticsEnabled={settings.breathingHaptics !== false}
-        startedAt={guide.startedAt}
-        timer={timer}
-        onComplete={closeGuide}
-      />}
+      {guide && <div id="breathing-guide-slot" ref={setGuideSlot} />}
       <div className="acts">
         <Button size="sm" icon="minus" onClick={() => addRest(-15)}>15s</Button>
         <Button size="sm" icon="plus" onClick={() => addRest(15)}>15s</Button>
         <Button size="sm" variant="primary" className="skip" onClick={stopRest}>{t('Skip')}</Button>
       </div>
     </div>
-  )
+    {guide && guideSlot && <BreathingGuide
+      slot={guideSlot}
+      key={guide.exerciseId}
+      exerciseId={guide.exerciseId}
+      hapticsEnabled={settings.breathingHaptics !== false}
+      startedAt={guide.startedAt}
+      timer={timer}
+      addRest={addRest}
+      stopRest={stopRest}
+      onComplete={closeGuide}
+    />}
+  </>
 }

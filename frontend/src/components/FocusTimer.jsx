@@ -1,9 +1,10 @@
-import { useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useUI } from '../store/useUI.js'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
 import { clock } from './RestTimer.jsx'
+import { useFullscreenOverlay } from './useFullscreenOverlay.js'
 
 // The open/minimized choice belongs to this hold, not to the saved preference.
 export default function FocusTimer({ ref }) {
@@ -27,41 +28,8 @@ export default function FocusTimer({ ref }) {
     media.addEventListener?.('change', onChange)
     return () => media.removeEventListener?.('change', onChange)
   }, [])
-  useEffect(() => {
-    if (!open) return
-    const previous = document.activeElement
-    const page = document.documentElement
-    const scrollY = window.scrollY
-    page.style.setProperty('--focus-scroll-offset', `${-scrollY}px`)
-    page.classList.add('focus-timer-open')
-    const minimize = () => setChoice({ key, open: false })
-    useUI.setState({ focusOpen: true, minimizeFocus: minimize })
-    const siblings = [...overlayRef.current.parentElement.children].filter(element => element !== overlayRef.current && element.id !== 'modal-root' && element.id !== 'toast')
-    const wasInert = siblings.map(element => element.inert)
-    siblings.forEach(element => { element.inert = true })
-    doneRef.current?.focus()
-    const onKey = event => {
-      if (useUI.getState().sheets?.length) return
-      if (event.key === 'Escape') { event.preventDefault(); minimize() }
-      if (event.key === 'Tab') {
-        const buttons = [...overlayRef.current.querySelectorAll('button')]
-        const index = buttons.indexOf(document.activeElement)
-        if ((event.shiftKey && index <= 0) || (!event.shiftKey && index === buttons.length - 1)) {
-          event.preventDefault(); buttons[event.shiftKey ? buttons.length - 1 : 0]?.focus()
-        }
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      page.classList.remove('focus-timer-open')
-      page.style.removeProperty('--focus-scroll-offset')
-      window.scrollTo(0, scrollY)
-      useUI.setState({ focusOpen: false, minimizeFocus: null })
-      siblings.forEach((element, index) => { element.inert = wasInert[index] })
-      if (previous?.isConnected) previous.focus()
-    }
-  }, [open, key])
+  const minimize = useCallback(() => setChoice({ key, open: false }), [key])
+  useFullscreenOverlay(open, overlayRef, doneRef, minimize)
 
   if (!open) return null
   const fraction = Math.max(0, Math.min(1, work.left / work.total))

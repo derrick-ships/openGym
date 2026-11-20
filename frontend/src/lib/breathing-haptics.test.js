@@ -19,6 +19,27 @@ afterEach(() => {
   vi.doUnmock('@capacitor/haptics')
 })
 
+describe('hapticForTransition', () => {
+  it('distinguishes phase impacts and completed rounds', async () => {
+    const { hapticForTransition } = await loadAdapter()
+    const inhale = { id: 'inhale', motion: 'inhale', cycle: 1, phaseIndex: 0, roundsCompleted: 0 }
+    const exhale = { id: 'exhale', motion: 'exhale', cycle: 1, phaseIndex: 1, roundsCompleted: 0 }
+    expect(hapticForTransition(null, inhale)).toBe(null)
+    expect(hapticForTransition(inhale, { ...inhale })).toBe(null)
+    expect(hapticForTransition(inhale, { id: 'hold', motion: 'hold', cycle: 1, phaseIndex: 1, roundsCompleted: 0 })).toBe('light')
+    expect(hapticForTransition(inhale, exhale)).toBe('release')
+    expect(hapticForTransition(exhale, { ...inhale, cycle: 2, roundsCompleted: 1 })).toBe('success')
+    expect(hapticForTransition(exhale, { id: 'ready', label: 'Guide complete — rest continues', completed: true, roundsCompleted: 1, rounds: 1 })).toBe('success')
+  })
+  it('uses a short double vibration for a release', async () => {
+    const vibrate = vi.fn()
+    setVibrate(vibrate)
+    const { phaseBoundaryHaptic } = await loadAdapter()
+    await phaseBoundaryHaptic(true, () => true, 'release')
+    expect(vibrate).toHaveBeenCalledWith([18, 60, 18])
+  })
+})
+
 describe('phaseBoundaryHaptic', () => {
   it('uses the browser vibration fallback when native haptics are unavailable', async () => {
     const vibrate = vi.fn(() => true)

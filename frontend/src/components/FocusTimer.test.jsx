@@ -57,6 +57,16 @@ afterEach(() => {
 })
 
 describe('focus timer', () => {
+  it('never stacks work and breathing overlays', async () => {
+    act(() => useUI.setState({ timer: { left: 90, total: 90, endsAt: Date.now() + 90000 } }))
+    render()
+    click(button('Breathe'))
+    expect(host.querySelectorAll('.breathing-focus')).toHaveLength(1)
+    act(() => useUI.setState({ timer: null, work: hold() }))
+    expect(host.querySelectorAll('.breathing-focus')).toHaveLength(0)
+    expect(host.querySelectorAll('.focus-timer')).toHaveLength(1)
+  })
+
   it('renders nothing without a work timer', () => {
     render()
     expect(host.querySelector('.focus-timer')).toBeNull()

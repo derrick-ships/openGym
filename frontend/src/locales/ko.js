@@ -1,5 +1,12 @@
 // Korean UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "회복 호흡",
+  "Resonance breathing": "공명 호흡",
+  "Triangle breathing": "삼각 호흡",
+  "Power breath": "활력 호흡",
+  "Stop if lightheaded": "어지러우면 멈추세요",
+  "Expand breathing guide": "호흡 가이드 확대",
+  "Minimize breathing guide": "호흡 가이드 최소화",
   "New to lifting": "웨이트 트레이닝 입문",
   "This workout is no longer saved. Context cannot be edited.": "이 운동은 더 이상 저장되어 있지 않아 상황을 수정할 수 없습니다.",
   "Anything else?": "다른 내용이 있나요?",

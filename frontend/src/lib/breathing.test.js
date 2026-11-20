@@ -5,8 +5,33 @@ describe('breathing pattern catalog', () => {
   it('defines the five rest-guide exercises and their round caps', () => {
     expect(BREATHING_EXERCISES.map(x => x.id)).toEqual([
       'physiological-sigh', 'coherent', 'extended-exhale', 'bhramari', 'alternate-nostril',
+      'box', 'recovery-sprint', 'resonance-6', 'triangle', 'power-breath',
     ])
-    expect(BREATHING_EXERCISES.map(x => x.rounds)).toEqual([3, 10, 5, 5, 4])
+    expect(BREATHING_EXERCISES.map(x => x.rounds)).toEqual([3, 10, 5, 5, 4, 4, 6, 5, 6, 8])
+  })
+})
+
+describe('new breathing patterns', () => {
+  it.each([
+    ['box', [['inhale', 4000], ['hold', 4000], ['exhale', 4000], ['hold-empty', 4000]], 4],
+    ['recovery-sprint', [['inhale', 3000], ['hold', 1000], ['exhale', 5000]], 6],
+    ['resonance-6', [['inhale', 6000], ['exhale', 6000]], 5],
+    ['triangle', [['inhale', 4000], ['hold', 4000], ['exhale', 4000]], 6],
+  ])('%s has the requested wall-clock phases and cap', (id, phases, rounds) => {
+    let offset = 0
+    for (const [phase, durationMs] of phases) {
+      expect(phaseAt(id, offset)).toMatchObject({ id: phase, durationMs, rounds })
+      offset += durationMs
+    }
+    expect(phaseAt(id, offset * rounds)).toMatchObject({ completed: true, roundsCompleted: rounds })
+    expect(phaseAt(id, 0, offset + 4999)).toMatchObject({ completed: true, roundsCompleted: 0 })
+  })
+
+  it('finishes eight power cycles with one normal breath, not another energising cycle', () => {
+    expect(BREATHING_EXERCISES.find(x => x.id === 'power-breath').energising).toBe(true)
+    expect(phaseAt('power-breath', 0)).toMatchObject({ id: 'inhale', durationMs: 2000 })
+    expect(phaseAt('power-breath', 2000)).toMatchObject({ id: 'exhale', durationMs: 2000 })
+    expect(phaseAt('power-breath', 32000)).toMatchObject({ label: 'Take a normal breath', completed: true, roundsCompleted: 8 })
   })
 })
 

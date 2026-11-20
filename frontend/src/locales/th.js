@@ -1,5 +1,12 @@
 // Thai UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "ลมหายใจเพื่อฟื้นตัว",
+  "Resonance breathing": "ลมหายใจเรโซแนนซ์",
+  "Triangle breathing": "ลมหายใจสามเหลี่ยม",
+  "Power breath": "ลมหายใจเพิ่มพลัง",
+  "Stop if lightheaded": "หยุดหากรู้สึกเวียนหัว",
+  "Expand breathing guide": "ขยายคู่มือการหายใจ",
+  "Minimize breathing guide": "ย่อคู่มือการหายใจ",
   "New to lifting": "เริ่มฝึกเวท",
   "This workout is no longer saved. Context cannot be edited.": "ไม่มีการบันทึกการฝึกนี้แล้ว จึงแก้ไขบริบทไม่ได้",
   "Anything else?": "มีอะไรเพิ่มเติมไหม?",

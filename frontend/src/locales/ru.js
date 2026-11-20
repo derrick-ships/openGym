@@ -1,5 +1,12 @@
 // Russian UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "Восстанавливающее дыхание",
+  "Resonance breathing": "Резонансное дыхание",
+  "Triangle breathing": "Треугольное дыхание",
+  "Power breath": "Энергичное дыхание",
+  "Stop if lightheaded": "Остановитесь при головокружении",
+  "Expand breathing guide": "Развернуть руководство по дыханию",
+  "Minimize breathing guide": "Свернуть руководство по дыханию",
   "New to lifting": "Новичок в силовых тренировках",
   "This workout is no longer saved. Context cannot be edited.": "Эта тренировка больше не сохранена. Контекст нельзя изменить.",
   "Anything else?": "Что-то ещё?",

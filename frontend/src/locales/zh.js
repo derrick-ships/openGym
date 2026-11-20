@@ -1,5 +1,12 @@
 // Simplified Chinese UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "恢复呼吸",
+  "Resonance breathing": "共振呼吸",
+  "Triangle breathing": "三角呼吸",
+  "Power breath": "活力呼吸",
+  "Stop if lightheaded": "如感头晕请停止",
+  "Expand breathing guide": "展开呼吸引导",
+  "Minimize breathing guide": "收起呼吸引导",
   "New to lifting": "力量训练新手",
   "This workout is no longer saved. Context cannot be edited.": "此训练已不再保存，无法编辑训练情况。",
   "Anything else?": "还有其他情况吗？",

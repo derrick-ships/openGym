@@ -1,5 +1,12 @@
 // Hungarian UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "Regeneráló légzés",
+  "Resonance breathing": "Rezonancialégzés",
+  "Triangle breathing": "Háromszög légzés",
+  "Power breath": "Élénkítő légzés",
+  "Stop if lightheaded": "Szédülés esetén hagyd abba",
+  "Expand breathing guide": "Légzési útmutató kibontása",
+  "Minimize breathing guide": "Légzési útmutató kis méretre állítása",
   "New to lifting": "Kezdő súlyzós edzésben",
   "This workout is no longer saved. Context cannot be edited.": "Ez az edzés már nincs mentve. A körülmények nem szerkeszthetők.",
   "Anything else?": "Van még valami?",

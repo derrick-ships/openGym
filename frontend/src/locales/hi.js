@@ -1,5 +1,12 @@
 // Hindi UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "रिकवरी श्वास",
+  "Resonance breathing": "रेज़ोनेंस श्वास",
+  "Triangle breathing": "त्रिकोण श्वास",
+  "Power breath": "ऊर्जावान श्वास",
+  "Stop if lightheaded": "चक्कर आए तो रुकें",
+  "Expand breathing guide": "श्वास गाइड बड़ा करें",
+  "Minimize breathing guide": "श्वास गाइड छोटा करें",
   "New to lifting": "वेट ट्रेनिंग में नए",
   "This workout is no longer saved. Context cannot be edited.": "यह कसरत अब सहेजी नहीं गई है। संदर्भ बदला नहीं जा सकता।",
   "Anything else?": "कुछ और?",

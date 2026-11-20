@@ -1,5 +1,12 @@
 // French UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  "Recovery sprint": "Respiration de récupération",
+  "Resonance breathing": "Respiration de résonance",
+  "Triangle breathing": "Respiration triangulaire",
+  "Power breath": "Respiration énergisante",
+  "Stop if lightheaded": "Arrêtez en cas de vertige",
+  "Expand breathing guide": "Agrandir le guide de respiration",
+  "Minimize breathing guide": "Réduire le guide de respiration",
   "New to lifting": "Débutant en musculation",
   "This workout is no longer saved. Context cannot be edited.": "Cette séance n’est plus enregistrée. Le contexte ne peut pas être modifié.",
   "Anything else?": "Autre chose ?",

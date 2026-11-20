@@ -5,6 +5,11 @@ const phase = (id, label, durationMs, motion, cue, side) => ({
 const inhale = (durationMs, cue = 'Through your nose') => phase('inhale', 'Inhale', durationMs, 'inhale', cue)
 const exhale = (durationMs, cue = 'Through your mouth') => phase('exhale', 'Exhale', durationMs, 'exhale', cue)
 const hold = (id, durationMs, cue) => phase(id, 'Hold', durationMs, 'hold', cue)
+const boxPhases = () => [inhale(4000), hold('hold', 4000, 'Hold comfortably'), exhale(4000, 'Through your nose'), hold('hold-empty', 4000, 'Pause comfortably')]
+const exercise = (id, label, rounds, phases, extra = {}) => ({
+  id, label, rounds, defaultVariant: 'default', ...extra,
+  variants: [{ id: 'default', label, rounds, phases }],
+})
 
 export const BREATHING_EXERCISES = [
   {
@@ -53,15 +58,15 @@ export const BREATHING_EXERCISES = [
       },
       {
         id: 'box', label: 'Box breathing', rounds: 4,
-        phases: [
-          inhale(4000),
-          hold('hold', 4000, 'Hold comfortably'),
-          exhale(4000, 'Through your nose'),
-          hold('hold-empty', 4000, 'Pause comfortably'),
-        ],
+        phases: boxPhases(),
       },
     ],
   },
+  exercise('box', 'Box breathing', 4, boxPhases()),
+  exercise('recovery-sprint', 'Recovery sprint', 6, [inhale(3000), hold('hold', 1000, 'Hold comfortably'), exhale(5000, 'Slow and easy')]),
+  exercise('resonance-6', 'Resonance breathing', 5, [inhale(6000), exhale(6000, 'Through your nose or mouth')]),
+  exercise('triangle', 'Triangle breathing', 6, [inhale(4000), hold('hold', 4000, 'Hold comfortably'), exhale(4000, 'Slow and easy')]),
+  exercise('power-breath', 'Power breath', 8, [inhale(2000), exhale(2000)], { energising: true }),
 ]
 
 const cycleDuration = phases => phases.reduce((total, item) => total + item.durationMs, 0)
@@ -97,7 +102,10 @@ export function phaseAt(exerciseId, elapsedMs, remainingMs = Infinity, variantId
 
   if (remaining <= 0) return finished(rounds, completedCycles, 'ended')
   if (remaining <= 5000) return finished(rounds, completedCycles, 'soon')
-  if (elapsed >= duration * rounds) return finished(rounds, rounds)
+  if (elapsed >= duration * rounds) {
+    const result = finished(rounds, rounds)
+    return exercise.energising ? { ...result, label: 'Take a normal breath', cue: 'Guide complete — rest continues' } : result
+  }
 
   const cycleElapsed = elapsed % duration
   const cycle = completedCycles + 1

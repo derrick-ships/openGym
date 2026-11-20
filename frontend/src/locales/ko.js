@@ -1,5 +1,14 @@
 // Korean UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
+  'Full-screen timer for timed sets': 'Full-screen timer for timed sets',
+  'Big numbers you can read from across the room.': 'Big numbers you can read from across the room.',
+  'Expand timer': 'Expand timer',
+  'Minimize timer': 'Minimize timer',
+  'Timed set': 'Timed set',
+  'Time remaining': 'Time remaining',
+  'Stop': 'Stop',
+  '10 seconds remaining': '10 seconds remaining',
+  '3 seconds remaining': '3 seconds remaining',
   'Confirm': '확인',
   'Cancel': '취소',
   'Press back again to exit': '뒤로를 한 번 더 누르면 종료됩니다',

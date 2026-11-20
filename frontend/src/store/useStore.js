@@ -26,6 +26,8 @@ const POLL_MS = 30000        // while the app is open and signed in, ask the ser
 export const DEF = {
   unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, soundOnSilent: false, timerFlash: false, keepAwake: true, lang: 'en',
   breathingExercise: 'coherent', breathingHaptics: true,
+  // Make timed sets readable at a distance; minimizing only affects the current hold.
+  focusTimer: true,
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',

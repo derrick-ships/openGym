@@ -22,6 +22,7 @@ import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import SyncBanner from './components/SyncBanner.jsx'
 import RestTimer from './components/RestTimer.jsx'
+import FocusTimer from './components/FocusTimer.jsx'
 import TimerFlash from './components/TimerFlash.jsx'
 import Login from './views/Login.jsx'
 import MobileOnboarding from './views/MobileOnboarding.jsx'
@@ -63,6 +64,7 @@ function Shell() {
   const navigate = useNavigate()
   const loc = useLocation()
   const navType = useNavigationType()
+  const focusTimerRef = useRef(null)
   const { S, user, ready } = useStore()
   // iOS: whether timer sounds get past the ring/silent switch (Settings → Sounds). Page-level,
   // so it is applied here on load and on change rather than at each beep.
@@ -170,7 +172,8 @@ function Shell() {
       </div>
       {/* The chat owns the bottom of the screen: its composer sits where the tabs would be. */}
       {!oauthLogin && loc.pathname !== '/coach' && <TabBar onStart={startFlow} />}
-      <RestTimer />
+      <RestTimer onExpand={() => focusTimerRef.current?.expand()} />
+      <FocusTimer ref={focusTimerRef} />
       <Modals />
       <Toast />
       <TimerFlash />

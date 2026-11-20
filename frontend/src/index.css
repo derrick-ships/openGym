@@ -877,9 +877,7 @@ body.chips-dragging *{cursor:inherit}
 #timer .t{font-size:26px;font-weight:600;letter-spacing:-.026em;font-variant-numeric:tabular-nums;min-width:66px}
 #timer .bar{flex:1;height:4px;background:var(--surface-3);border-radius:99px;overflow:hidden}
 #timer .bar i{display:block;height:100%;background:var(--acc);transition:width 1s linear}
-/* rest variant: −15/+15/Skip and the clock won't share one line on a phone, so the clock and
-   bar take the top row and the controls take their own. The work timer keeps a single row —
-   it only ever has two buttons. */
+/* Rest controls get their own row so the clock and progress remain legible on phones. */
 #timer.rest{flex-direction:column;align-items:stretch;gap:10px}
 #timer.rest .head{display:flex;align-items:center;gap:12px}
 #timer.rest .head .bar{min-width:18px}
@@ -1335,3 +1333,36 @@ body.rest-guide #app{padding-bottom:calc(384px + var(--sab))}
 .coach-cta-t b{font-size:17px;font-weight:600;letter-spacing:-.015em;color:var(--label)}
 .coach-cta-t span{font-size:13px;color:var(--label-2);line-height:1.35}
 .coach-cta-chev{color:var(--acc);font-size:15px;flex:none}
+
+/* focus timer */
+#timer.working{gap:8px}
+#timer.working .work-expand{display:grid;place-items:center;flex:none;width:56px;height:56px;border-radius:12px;color:var(--acc);font-size:22px}
+#timer.working .work-expand:active{background:var(--surface-2)}
+.focus-timer{
+  position:fixed;inset:0;z-index:90;min-width:0;width:100%;height:100vh;height:100dvh;
+  display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;
+  padding:calc(24px + env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) max(24px,env(safe-area-inset-left,0px));
+  background:#111315;color:#f8f8f5;
+}
+.focus-timer-head,.focus-timer-footer{width:100%;max-width:840px;margin-inline:auto}
+.focus-timer-head{display:flex;align-items:flex-start;gap:16px}
+.focus-timer-heading{flex:1;min-width:0;padding-top:5px}
+.focus-timer-eyebrow,.focus-timer-caption{font-size:12px;font-weight:650;letter-spacing:.17em;text-transform:uppercase;color:#aeb3b2}
+.focus-timer-eyebrow{color:var(--acc);margin-bottom:10px}
+.focus-timer-heading h2{font-size:clamp(20px,4vw,32px);font-weight:650;letter-spacing:.025em;line-height:1.2;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.focus-timer-minimize{display:grid;place-items:center;flex:none;width:56px;height:56px;border:1px solid #454a49;border-radius:50%;color:#f8f8f5;font-size:23px}
+.focus-timer-minimize:active{background:#292d2c}
+.focus-timer-center{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;gap:16px;padding-bottom:20px}
+.focus-timer-clock{font-size:clamp(80px,40vw,330px);font-weight:700;line-height:.9;letter-spacing:-.065em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.focus-timer.final-seconds .focus-timer-clock{color:var(--acc)}
+.focus-timer-caption{letter-spacing:.18em}
+.focus-timer-progress{height:4px;background:#353a39;overflow:hidden;border-radius:4px;margin-bottom:28px}
+.focus-timer-progress i{display:block;width:100%;height:100%;background:var(--acc);transform-origin:left;transition:transform 1s linear}
+.focus-timer-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px}
+.focus-timer-actions button{min-width:0;min-height:64px;border-radius:14px;font-size:18px;font-weight:700}
+.focus-timer-stop{background:#292d2c;color:#f8f8f5}
+.focus-timer-done{background:var(--acc);color:var(--on-acc)}
+.focus-timer-actions button:active{filter:brightness(.85)}
+.focus-timer button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+@media (prefers-reduced-motion:reduce){.focus-timer-progress i{transition:none}}
+@media (max-height:480px){.focus-timer{padding-top:calc(10px + var(--sat));padding-bottom:calc(10px + var(--sab))}.focus-timer-center{padding:0}.focus-timer-clock{font-size:clamp(64px,20vh,180px)}.focus-timer-progress{margin-bottom:10px}}

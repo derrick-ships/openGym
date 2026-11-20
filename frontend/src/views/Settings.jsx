@@ -286,6 +286,10 @@ export default function Settings() {
       <Row icon="wrench" iconTint="var(--purple)" title={t('Workout controls')} accessory="chevron"
         subtitle={t('Everything hidden here stays one tap away: the ⋯ button of an exercise and the number of a set.')}
         onClick={() => workoutControlsSheet()} />
+      <Row icon="timer" iconTint="var(--acc)" title={t('Full-screen timer for timed sets')}
+        subtitle={t('Big numbers you can read from across the room.')}>
+        <Switch aria-label={t('Full-screen timer for timed sets')} checked={S.focusTimer !== false} onChange={v => update(s => { s.focusTimer = v })} />
+      </Row>
       <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
         value={S.restSec} onChange={v => update(s => { s.restSec = v })}
         options={[{ value: 0, label: t('Off') }, ...[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))]} />

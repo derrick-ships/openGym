@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
 import { activeProfile, exAvailable } from '../lib/equipment.js'
-import { uid } from '../lib/format.js'
+import { uid, ACCENTS } from '../lib/format.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { supersetUnits, moveSupersetUnit, cleanupSg, exLine, defaultConfig } from '../lib/history.js'
 import { Thumb } from '../components/Media.jsx'
@@ -17,8 +17,12 @@ import { copyRoutine } from '../lib/routines.js'
 import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import BodyMap, { bodyMapPngBlob } from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
-import { MOBILE, shareBlob } from '../lib/mobile.js'
+import { MOBILE, shareBlob, copyText } from '../lib/mobile.js'
 import { routineShareText } from '../lib/plan-share.js'
+import { routineHandoffText } from '../lib/ai-handoff.js'
+import { routinePageHTML, pageFileName } from '../lib/share-page.js'
+import { shareHtmlPage } from '../lib/share-html.js'
+import { AiShareButtons } from '../components/AiButtons.jsx'
 
 export const ROUTINE_LONG_PRESS_MS = 380
 export const ROUTINE_DRAG_SLOP = 8
@@ -27,19 +31,6 @@ function safeExportName(value) {
   const name = String(value || 'workout').normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')
   return (name || 'workout').slice(0, 64) + '-muscles.png'
-}
-
-async function copyText(value) {
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
-  const field = document.createElement('textarea')
-  field.value = value
-  field.setAttribute('readonly', '')
-  field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
-  document.body.appendChild(field)
-  field.select()
-  const copied = document.execCommand?.('copy')
-  field.remove()
-  if (!copied) throw new Error('clipboard unavailable')
 }
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value))
@@ -512,6 +503,16 @@ export default function RoutineEdit() {
         toast(t('Could not copy the routine.'))
       } finally { setShareBusy(false) }
     }}>{shareBusy ? t('Copying…') : t('Share routine')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" icon="upload" onClick={async () => {
+      try {
+        await shareHtmlPage(routinePageHTML(S, r, { accent: ACCENTS[S.accent] || ACCENTS.lime, aiText: routineHandoffText(S, r) }), pageFileName('routine', r.name))
+      } catch (error) {
+        if (error?.name !== 'AbortError' && error?.code !== 'CANCELED') toast(t('Could not share the page.'))
+      }
+    }}>{t('Share as page')}</Button>
+    <div style={{ height: 8 }} />
+    <AiShareButtons getText={() => routineHandoffText(S, r)} />
     <div style={{ height: 10 }} />
     <Button variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,

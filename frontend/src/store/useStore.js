@@ -13,6 +13,7 @@ import { loadSyncMeta, saveSyncMeta, loadSyncBase, saveSyncBase, mergePendingSta
 import { loadCoachDevice, saveCoachDevice, coachDeviceSettings } from '../lib/coach-device.js'
 
 import { WC_DEFAULT } from '../lib/workout-controls.js'
+import { ATHLETE_DEFAULT } from '../lib/ai-handoff.js'
 
 const KEY = 'gym_state_v1'
 // Where this device stands with the server: the revision it last adopted or pushed, and its own
@@ -29,6 +30,8 @@ export const DEF = {
   // Make timed sets readable at a distance; minimizing only affects the current hold.
   focusTimer: true,
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
+  // Optional personal coaching context persists and syncs with other profile settings.
+  athlete: { ...ATHLETE_DEFAULT, healthSources: [] },
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
   // How the active workout is laid out — 'cards' (one exercise at a time with Prev/Next),

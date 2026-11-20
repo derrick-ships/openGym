@@ -29,6 +29,10 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { normalizeRepRange } from './lib/rep-range.js'
 import { MOBILE, shareExport, printHtml, shareText, copyText, shareBlob } from './lib/mobile.js'
 import { sessionShareText } from './lib/session-share.js'
+import { SESSION_CONTEXT_FLAGS, sessionHandoffText } from './lib/ai-handoff.js'
+import { workoutPageHTML, pageFileName } from './lib/share-page.js'
+import { shareHtmlPage } from './lib/share-html.js'
+import { AiShareButtons } from './components/AiButtons.jsx'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { assetObjectUrl, uploadAsset } from './lib/api.js'
@@ -1689,7 +1693,17 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
   const [mapReady, setMapReady] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
-  const text = sessionShareText(st, w, prs, e1prs)
+  const saved = st.workouts.find(record => record.id === w.id)
+  const workout = { ...w, context: saved?.context }
+  const context = { flags: Array.isArray(workout.context?.flags) ? workout.context.flags : [], note: typeof workout.context?.note === 'string' ? workout.context.note : '' }
+  const text = sessionShareText(st, workout, prs, e1prs)
+  const handoff = () => sessionHandoffText(st, workout, { prs, e1prs, context })
+  const saveContext = next => update(s => {
+    const rec = s.workouts.find(record => record.id === w.id)
+    if (!rec) return
+    if (next.flags.length || next.note.trim()) rec.context = next
+    else delete rec.context
+  })
   const load = loadOfWorkouts([w])
   const labels = rankOf(load).worked.map(slug => MUSCLE_NAME[slug] || slug)
   const nativeShare = MOBILE || (typeof navigator !== 'undefined' && typeof navigator.share === 'function')
@@ -1743,7 +1757,32 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
     } finally { setBusy('') }
   }
 
+  const sharePage = async () => {
+    if (busy) return
+    setBusy('page'); setError('')
+    try {
+      const html = workoutPageHTML(st, workout, { prs, e1prs, accent: ACCENTS[st.accent] || ACCENTS.lime, aiText: handoff() })
+      await shareHtmlPage(html, pageFileName('workout', workout.name, workout.d))
+    } catch (cause) {
+      if (!isShareCancellation(cause)) setError(t('Could not share the page.'))
+    } finally { setBusy('') }
+  }
+
   return <>
+    <section className="ai-session-card">
+      <h4>{t('Make every session count')}</h4>
+      <p>{t('Send this workout to your AI coach. It compares it with your history and tells you what to aim for next.')}</p>
+      <div className="ai-context-label">{t('How did it go?')}</div>
+      <div className="ai-context-chips" role="group" aria-label={t('How did it go?')}>
+        {SESSION_CONTEXT_FLAGS.map(({ id, label }) => <button type="button" key={id} aria-pressed={context.flags.includes(id)}
+          className={'chip nocap' + (context.flags.includes(id) ? ' on' : '')}
+          onClick={() => saveContext({ ...context, flags: context.flags.includes(id) ? context.flags.filter(flag => flag !== id) : [...context.flags, id] })}>{t(label)}</button>)}
+      </div>
+      <input className="input ai-context-note" maxLength={300} value={context.note}
+        aria-label={t('Anything else? e.g. left early, elbow sore')} placeholder={t('Anything else? e.g. left early, elbow sore')}
+        onChange={e => saveContext({ ...context, note: e.target.value })} />
+      <AiShareButtons getText={handoff} />
+    </section>
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <div ref={mapRef}>
       <BodyMap load={load} body={st.body} onReady={() => setMapReady(true)} />
@@ -1757,6 +1796,8 @@ function CompletedWorkoutExports({ w, prs = [], e1prs = [] }) {
         {busy === 'copy' ? t('Copying…') : t('Copy workout')}
       </Button>
     </div>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" icon="upload" onClick={sharePage} disabled={!!busy} aria-busy={busy === 'page'}>{t('Share as page')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="tinted" icon="download" onClick={downloadMap} disabled={!mapReady || !!busy} aria-busy={busy === 'map'}>
       {busy === 'map' ? t('Preparing…') : t('Download body map')}
@@ -2236,7 +2277,7 @@ export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComple
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
   const stretching = w.kind === 'stretching'
-  return <div className={stretching ? 'stretching-workout' : undefined} style={{ textAlign: 'center', padding: '8px 0' }}>
+  return <div className={'finish-summary' + (stretching ? ' stretching-workout' : '')} style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}{stretching && <span className="tag stretch-kind" style={{ marginLeft: 6 }}>{t('Stretching')}</span>}</h3>
     <div className="tiles" style={{ textAlign: 'left' }}>

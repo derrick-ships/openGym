@@ -72,6 +72,13 @@ describe('mergeStates', () => {
     expect(m2.routines.find(r => r.id === 'shared').name).toBe('from B')
   })
 
+  it('treats athlete information like other profile settings', () => {
+    const older = base({ _ts: 1, athlete: { goal: 'Strength', healthSources: ['oura'] } })
+    const newer = base({ _ts: 2, athlete: { goal: 'Muscle', healthSources: ['garmin'] } })
+    expect(mergeStates(older, newer).athlete).toEqual(newer.athlete)
+    expect(mergeStates(older, newer, { prefer: 'a' }).athlete).toEqual(older.athlete)
+  })
+
   it('bodyweight keeps the later-edited entry of a day, exWeights the larger weight, notes union', () => {
     const m = mergeStates(A(), B())
     expect(m.bodyweight.find(b => b.d === '2026-09-01')).toEqual({ d: '2026-09-01', w: 79, t: 20 })

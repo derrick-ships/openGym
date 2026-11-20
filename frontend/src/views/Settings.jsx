@@ -13,7 +13,9 @@ import { pushSupported, enablePush, disablePush, sendTestPush, syncPushSubscript
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
-import { MOBILE, isAndroid, shareExport, syncReminder } from '../lib/mobile.js'
+import { MOBILE, isAndroid, shareExport, syncReminder, copyText } from '../lib/mobile.js'
+import { ATHLETE_DEFAULT, HEALTH_SOURCES, coachSkillText } from '../lib/ai-handoff.js'
+import { AiShareButtons } from '../components/AiButtons.jsx'
 import { checkForUpdate, downloadAndInstall } from '../lib/update.js'
 import { forgetCoach } from '../lib/coach-api.js'
 import { ConnectSheet } from './MobileOnboarding.jsx'
@@ -396,6 +398,8 @@ export default function Settings() {
       </div>
     </Section>
 
+    <AiCoachCard S={S} update={update} toast={toast} />
+
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan')} accessory="chevron" onClick={starterPlanSheet} />
@@ -452,6 +456,54 @@ export default function Settings() {
       exercise images and animations © <a href="https://gymvisual.com/" target="_blank" rel="noopener">Gym visual</a>
     </div>
   </div>
+}
+
+function AiCoachCard({ S, update, toast }) {
+  const athlete = { ...ATHLETE_DEFAULT, ...(S.athlete || {}) }
+  const sources = Array.isArray(athlete.healthSources) ? athlete.healthSources : []
+  const set = patch => update(s => { s.athlete = { ...ATHLETE_DEFAULT, ...(s.athlete || {}), ...patch } })
+  const totalInches = athlete.heightCm == null ? null : Math.round(athlete.heightCm / 2.54)
+  const feet = totalInches == null ? '' : Math.floor(totalInches / 12)
+  const inches = totalInches == null ? '' : totalInches % 12
+  const [heightDraft, setHeightDraft] = useState(null)
+  const heightFt = heightDraft?.feet ?? feet
+  const heightIn = heightDraft?.inches ?? inches
+  const setHeight = (ft, inch) => {
+    setHeightDraft({ feet: ft, inches: inch })
+    const total = (Number(ft) || 0) * 12 + (Number(inch) || 0)
+    set({ heightCm: total > 0 ? Math.round(total * 2.54 * 10) / 10 : null })
+  }
+  const copy = async () => {
+    try { await copyText(coachSkillText(S)); toast(t('Coach instructions copied')) }
+    catch { toast(t('Could not copy. Please try again.')) }
+  }
+  const choices = (label, field, options) => <label className="ai-profile-field">
+    <span>{label}</span><select className="input" aria-label={label} value={athlete[field] || ''} onChange={e => set({ [field]: e.target.value || null })}>
+      <option value="">{t('Not specified')}</option>{options.map(option => <option key={option} value={option}>{t(option)}</option>)}
+    </select>
+  </label>
+  return <Section title={t('AI coach')}>
+    <div className="ai-profile">
+      <p className="ai-profile-intro">{t('Use ChatGPT, Claude or any AI as a coach that knows your numbers.')}</p>
+      <div className="ai-profile-grid">
+        {choices(t('Sex'), 'sex', ['Female', 'Male', 'Other', 'Prefer not to say'])}
+        <label className="ai-profile-field"><span>{t('Birth year')}</span><input className="input" type="number" inputMode="numeric" min="1900" max={new Date().getFullYear()} aria-label={t('Birth year')} value={athlete.birthYear ?? ''} onChange={e => set({ birthYear: e.target.value ? Number(e.target.value) : null })} /></label>
+        {S.unit === 'lb' ? <div className="ai-profile-field"><span>{t('Height')}</span><div className="ai-height-fields">
+          <label><input className="input" type="number" min="0" inputMode="numeric" aria-label={t('Height (ft)')} value={heightFt} onChange={e => setHeight(e.target.value, heightIn)} onBlur={() => setHeightDraft(null)} /><span>{t('ft')}</span></label>
+          <label><input className="input" type="number" min="0" max="11" inputMode="numeric" aria-label={t('Height (in)')} value={heightIn} onChange={e => setHeight(heightFt, e.target.value)} onBlur={() => setHeightDraft(null)} /><span>{t('in')}</span></label>
+        </div></div> : <label className="ai-profile-field"><span>{t('Height (cm)')}</span><input className="input" type="number" min="0" inputMode="decimal" aria-label={t('Height (cm)')} value={athlete.heightCm ?? ''} onChange={e => set({ heightCm: e.target.value ? Number(e.target.value) : null })} /></label>}
+        {choices(t('Experience'), 'experience', ['New', 'Under 1 year', '1-3 years', '3+ years'])}
+        {choices(t('Goal'), 'goal', ['Strength', 'Muscle', 'Fat loss', 'General fitness', 'Sport performance'])}
+      </div>
+      <label className="ai-profile-field"><span>{t('Injuries')}</span><textarea className="input" rows={2} maxLength={1000} value={athlete.injuries} onChange={e => set({ injuries: e.target.value })} /></label>
+      <div className="ai-profile-field"><span>{t('Connected health sources')}</span><div className="ai-context-chips" role="group" aria-label={t('Connected health sources')}>
+        {HEALTH_SOURCES.map(({ id, label }) => <button type="button" key={id} aria-pressed={sources.includes(id)} className={'chip nocap' + (sources.includes(id) ? ' on' : '')}
+          onClick={() => set({ healthSources: sources.includes(id) ? sources.filter(source => source !== id) : [...sources, id] })}>{t(label)}</button>)}
+      </div></div>
+      <label className="ai-profile-field"><span>{t('Notes')}</span><textarea className="input" rows={2} maxLength={1000} value={athlete.notes} onChange={e => set({ notes: e.target.value })} /></label>
+      <div className="ai-instructions"><strong>{t('Coach instructions')}</strong><Button variant="tinted" icon="clipboard" onClick={copy}>{t('Copy coach instructions')}</Button><AiShareButtons getText={() => coachSkillText(S)} /></div>
+    </div>
+  </Section>
 }
 
 // The whole point is that the two scales are one judgement counted from opposite ends, and a
@@ -548,7 +600,7 @@ function effortHelpSheet() {
 
 const MCP_SCOPE_OPTIONS = [
   ['exercise:read', 'Exercise catalogue'], ['routine:read', 'Routines and week plan'],
-  ['workout:read', 'Workout history'], ['bodyweight:read', 'Body-weight log'],
+  ['workout:read', 'Workout history'], ['bodyweight:read', 'Body-weight log and athlete profile'],
   ['progress:read', 'Progress and muscle stats'], ['workout:write', 'Log workouts'],
   ['routine:propose', 'Routine proposals'], ['routine:write', 'Create and edit routines'],
   ['exercise:write', 'Create and edit exercises'], ['image:write', 'Exercise images'],

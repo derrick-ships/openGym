@@ -21,7 +21,9 @@ import { MOBILE, shareBlob, copyText } from '../lib/mobile.js'
 import { routineShareText } from '../lib/plan-share.js'
 import { routineHandoffText } from '../lib/ai-handoff.js'
 import { routinePageHTML, pageFileName } from '../lib/share-page.js'
-import { isShareCancellation, shareHtmlPage } from '../lib/share-html.js'
+import { shareHtmlPage } from '../lib/share-html.js'
+import { routineSnapshot } from '../lib/share-snapshot.js'
+import ShareLink from '../components/ShareLink.jsx'
 import { AiShareButtons } from '../components/AiButtons.jsx'
 
 export const ROUTINE_LONG_PRESS_MS = 380
@@ -504,13 +506,8 @@ export default function RoutineEdit() {
       } finally { setShareBusy(false) }
     }}>{shareBusy ? t('Copying…') : t('Share routine')}</Button>
     <div style={{ height: 8 }} />
-    <Button variant="ghost" icon="upload" onClick={async () => {
-      try {
-        await shareHtmlPage(routinePageHTML(S, r, { accent: ACCENTS[S.accent] || ACCENTS.lime, aiText: routineHandoffText(S, r) }), pageFileName('routine', r.name))
-      } catch (error) {
-        if (!isShareCancellation(error)) toast(t('Could not share the page.'))
-      }
-    }}>{t('Share as page')}</Button>
+    <ShareLink kind="routine" snapshot={() => routineSnapshot(S, r)}
+      download={() => shareHtmlPage(routinePageHTML(S, r, { accent: ACCENTS[S.accent] || ACCENTS.lime, aiText: routineHandoffText(S, r) }), pageFileName('routine', r.name))} />
     <div style={{ height: 8 }} />
     <AiShareButtons getText={() => routineHandoffText(S, r)} />
     <div style={{ height: 10 }} />

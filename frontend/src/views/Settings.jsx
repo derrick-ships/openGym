@@ -16,6 +16,7 @@ import { DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, isAndroid, shareExport, syncReminder, copyText } from '../lib/mobile.js'
 import { ATHLETE_DEFAULT, HEALTH_SOURCES, coachSkillText } from '../lib/ai-handoff.js'
 import { AiShareButtons } from '../components/AiButtons.jsx'
+import { listShares, revokeShare } from '../lib/share-snapshot.js'
 import { checkForUpdate, downloadAndInstall } from '../lib/update.js'
 import { forgetCoach } from '../lib/coach-api.js'
 import { ConnectSheet } from './MobileOnboarding.jsx'
@@ -27,6 +28,7 @@ export default function Settings() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
+  const guest = useStore(s => s.isGuest?.() || false)
   const coachLocal = useStore(s => s.coachLocal)
   const { update, replaceState, setUser, pullState, pushState, adoptProfile, signOut, signOutAll, resetDemo, disconnectServer } = useStore()
   const toast = useUI(s => s.toast)
@@ -405,6 +407,8 @@ export default function Settings() {
 
     <AiCoachCard S={S} update={update} toast={toast} />
 
+    {user && !guest && !MOBILE && !DEMO && <SharedPages />}
+
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan')} accessory="chevron" onClick={starterPlanSheet} />
@@ -461,6 +465,36 @@ export default function Settings() {
       exercise images and animations © <a href="https://gymvisual.com/" target="_blank" rel="noopener">Gym visual</a>
     </div>
   </div>
+}
+
+function SharedPages() {
+  const [shares, setShares] = useState(null)
+  const [error, setError] = useState(false)
+  const [removing, setRemoving] = useState('')
+  useEffect(() => {
+    let live = true
+    listShares().then(result => { if (live) setShares(result.shares || []) }).catch(() => { if (live) setError(true) })
+    return () => { live = false }
+  }, [])
+  const remove = async id => {
+    if (removing) return
+    setRemoving(id)
+    try { await revokeShare(id); setShares(current => current.filter(share => share.id !== id)) }
+    catch { setError(true) }
+    finally { setRemoving('') }
+  }
+  return <Section title={t('Shared pages')}>
+    <div className="shared-pages">
+      {error && <p className="small" role="alert">{t('Could not load or remove shared pages.')}</p>}
+      {!shares && !error && <p className="muted small">{t('Loading…')}</p>}
+      {shares?.length === 0 && <p className="muted small">{t('No shared pages yet.')}</p>}
+      {shares?.map(share => <div className="shared-page-row" key={share.id}>
+        <div><strong>{share.title}</strong><div className="muted small">{new Date(share.createdAt).toLocaleDateString()}</div></div>
+        <a href={'/s/' + encodeURIComponent(share.id)} target="_blank" rel="noopener noreferrer">{t('Open')}</a>
+        <Button size="sm" variant="danger" disabled={!!removing} onClick={() => remove(share.id)}>{t('Remove')}</Button>
+      </div>)}
+    </div>
+  </Section>
 }
 
 function AiCoachCard({ S, update, toast }) {

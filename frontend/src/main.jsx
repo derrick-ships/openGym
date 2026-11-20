@@ -1,17 +1,15 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App.jsx'
-import { MOBILE } from './lib/mobile.js'
 import './index.css'
 
-// App.jsx restores per-route scroll itself; the browser's own attempt races it.
-if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+const publicShare = location.pathname.startsWith('/s/')
+const Screen = publicShare ? lazy(() => import('./views/SharePage.jsx')) : lazy(() => import('./App.jsx'))
 
+// Public shares never boot the app store or register a service worker.
+if (!publicShare && 'scrollRestoration' in history) history.scrollRestoration = 'manual'
 createRoot(document.getElementById('root')).render(
-  <StrictMode><App /></StrictMode>
+  <StrictMode><Suspense fallback={null}><Screen /></Suspense></StrictMode>
 )
-
-// Not in the mobile build: the native shell already serves everything from disk.
-if (!MOBILE && 'serviceWorker' in navigator && location.protocol === 'https:') {
+if (!publicShare && import.meta.env.VITE_MOBILE !== '1' && 'serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {})
 }
